@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { 
   Maximize2, 
   Minimize2, 
@@ -55,8 +56,9 @@ interface AgentRunOutputViewerProps {
 export function AgentRunOutputViewer({ 
   agentRunId, 
   tabId,
-  className 
+  className
 }: AgentRunOutputViewerProps) {
+  const { t } = useTranslation();
   const { updateTabTitle, updateTabStatus } = useTabState();
   const [run, setRun] = useState<AgentRunWithMetrics | null>(null);
   const [messages, setMessages] = useState<ClaudeStreamMessage[]>([]);
@@ -106,7 +108,7 @@ export function AgentRunOutputViewer({
         setLoading(true);
         const agentRun = await api.getAgentRun(parseInt(agentRunId));
         setRun(agentRun);
-        updateTabTitle(tabId, `Agent: ${agentRun.agent_name || 'Unknown'}`);
+        updateTabTitle(tabId, `${t("common.agent")}: ${agentRun.agent_name || t("common.unknown")}`);
         updateTabStatus(tabId, agentRun.status === 'running' ? 'running' : agentRun.status === 'failed' ? 'error' : 'complete');
       } catch (error) {
         console.error('Failed to load agent run:', error);
@@ -254,7 +256,7 @@ export function AgentRunOutputViewer({
       }
     } catch (error) {
       console.error('Failed to load agent output:', error);
-      setToast({ message: 'Failed to load agent output', type: 'error' });
+      setToast({ message: t('errors.failedToLoad'), type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -304,12 +306,12 @@ export function AgentRunOutputViewer({
       });
 
       const completeUnlisten = await listen<boolean>(`agent-complete:${run!.id}`, () => {
-        setToast({ message: 'Agent execution completed', type: 'success' });
+        setToast({ message: t('agents.completed'), type: 'success' });
         // Don't set status here as the parent component should handle it
       });
 
       const cancelUnlisten = await listen<boolean>(`agent-cancelled:${run!.id}`, () => {
-        setToast({ message: 'Agent execution was cancelled', type: 'error' });
+        setToast({ message: t('errors.executionCancelled'), type: 'error' });
       });
 
       unlistenRefs.current = [outputUnlisten, errorUnlisten, completeUnlisten, cancelUnlisten];
@@ -323,7 +325,7 @@ export function AgentRunOutputViewer({
     const jsonl = rawJsonlOutput.join('\n');
     await navigator.clipboard.writeText(jsonl);
     setCopyPopoverOpen(false);
-    setToast({ message: 'Output copied as JSONL', type: 'success' });
+    setToast({ message: t('common.copyAsJsonl'), type: 'success' });
   };
 
   const handleCopyAsMarkdown = async () => {
@@ -381,7 +383,7 @@ export function AgentRunOutputViewer({
 
     await navigator.clipboard.writeText(markdown);
     setCopyPopoverOpen(false);
-    setToast({ message: 'Output copied as Markdown', type: 'success' });
+    setToast({ message: t('common.copyAsMarkdown'), type: 'success' });
   };
 
   const handleRefresh = async () => {
@@ -402,7 +404,7 @@ export function AgentRunOutputViewer({
       
       if (success) {
         console.log(`[AgentRunOutputViewer] Successfully stopped agent session ${run.id}`);
-        setToast({ message: 'Agent execution stopped', type: 'success' });
+        setToast({ message: t('agents.stopped'), type: 'success' });
         
         // Clean up listeners
         unlistenRefs.current.forEach(unlisten => unlisten());
@@ -430,13 +432,13 @@ export function AgentRunOutputViewer({
         await loadOutput(true);
       } else {
         console.warn(`[AgentRunOutputViewer] Failed to stop agent session ${run.id} - it may have already finished`);
-        setToast({ message: 'Failed to stop agent - it may have already finished', type: 'error' });
+        setToast({ message: t('errors.failedToStop'), type: 'error' });
       }
     } catch (err) {
       console.error('[AgentRunOutputViewer] Failed to stop agent:', err);
-      setToast({ 
-        message: `Failed to stop execution: ${err instanceof Error ? err.message : 'Unknown error'}`, 
-        type: 'error' 
+      setToast({
+        message: t('errors.failedToStop') + ': ' + (err instanceof Error ? err.message : t('errors.unknownError')),
+        type: 'error'
       });
     }
   };
@@ -535,7 +537,7 @@ export function AgentRunOutputViewer({
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading agent run...</p>
+          <p className="text-muted-foreground">{t('status.loading')}...</p>
         </div>
       </div>
     );
@@ -557,7 +559,7 @@ export function AgentRunOutputViewer({
                     {run.status === 'running' && (
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-green-600 font-medium">Running</span>
+                        <span className="text-xs text-green-600 font-medium">{t('agents.running')}</span>
                       </div>
                     )}
                   </CardTitle>
@@ -631,7 +633,7 @@ export function AgentRunOutputViewer({
                   variant="ghost"
                   size="sm"
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                  title={isFullscreen ? t("common.exitFullscreen") : t("common.enterFullscreen")}
                   className="h-8 px-2"
                 >
                   {isFullscreen ? (
@@ -645,7 +647,7 @@ export function AgentRunOutputViewer({
                   size="sm"
                   onClick={handleRefresh}
                   disabled={refreshing}
-                  title="Refresh output"
+                  title={t("common.refreshOutput")}
                   className="h-8 px-2"
                 >
                   <RotateCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -656,7 +658,7 @@ export function AgentRunOutputViewer({
                     size="sm"
                     onClick={handleStop}
                     disabled={refreshing}
-                    title="Stop execution"
+                    title={t("common.stopExecution")}
                     className="h-8 px-2 text-destructive hover:text-destructive"
                   >
                     <StopCircle className="h-4 w-4" />

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type ClaudeInstallation } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +14,7 @@ interface ClaudeBinaryDialogProps {
 }
 
 export function ClaudeBinaryDialog({ open, onOpenChange, onSuccess, onError }: ClaudeBinaryDialogProps) {
+  const { t } = useTranslation();
   const [selectedInstallation, setSelectedInstallation] = useState<ClaudeInstallation | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [hasInstallations, setHasInstallations] = useState(true);
@@ -39,7 +41,7 @@ export function ClaudeBinaryDialog({ open, onOpenChange, onSuccess, onError }: C
 
   const handleSave = async () => {
     if (!selectedInstallation) {
-      onError("Please select a Claude installation");
+      onError(t("errors.pleaseSelectInstallation"));
       return;
     }
 
@@ -50,7 +52,17 @@ export function ClaudeBinaryDialog({ open, onOpenChange, onSuccess, onError }: C
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save Claude binary path:", error);
-      onError(error instanceof Error ? error.message : "Failed to save Claude binary path");
+      let errorMessage: string;
+      if (error instanceof Error) {
+        if (error.message.includes("Cannot read properties of undefined") || error.message.includes("invoke")) {
+          errorMessage = t("errors.apiNotAvailable");
+        } else {
+          errorMessage = error.message;
+        }
+      } else {
+        errorMessage = t("errors.failedToSaveBinaryPath");
+      }
+      onError(errorMessage);
     } finally {
       setIsValidating(false);
     }
@@ -131,7 +143,7 @@ export function ClaudeBinaryDialog({ open, onOpenChange, onSuccess, onError }: C
             onClick={handleSave} 
             disabled={isValidating || !selectedInstallation || !hasInstallations}
           >
-            {isValidating ? "Validating..." : hasInstallations ? "Save Selection" : "No Installations Found"}
+            {isValidating ? t("errors.validating") : hasInstallations ? t("errors.saveSelection") : t("errors.noInstallationsFound")}
           </Button>
         </DialogFooter>
       </DialogContent>

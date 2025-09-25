@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { 
   ArrowLeft, 
@@ -48,6 +49,7 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
   onBack,
   className,
 }) => {
+  const { t } = useTranslation();
   const [run, setRun] = useState<AgentRunWithMetrics | null>(null);
   const [messages, setMessages] = useState<ClaudeStreamMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,17 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
       }
     } catch (err) {
       console.error("Failed to load run:", err);
-      setError("Failed to load execution details");
+      let errorMessage: string;
+      if (err instanceof Error) {
+        if (err.message.includes("Cannot read properties of undefined") || err.message.includes("invoke")) {
+          errorMessage = t("errors.apiNotAvailable");
+        } else {
+          errorMessage = err.message;
+        }
+      } else {
+        errorMessage = t("errors.failedToLoadDetails");
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -233,8 +245,8 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
   if (error || !run) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full", className)}>
-        <p className="text-destructive mb-4">{error || "Run not found"}</p>
-        <Button onClick={onBack}>Go Back</Button>
+        <p className="text-destructive mb-4">{error || t("errors.runNotFound")}</p>
+        <Button onClick={onBack}>{t("common.back")}</Button>
       </div>
     );
   }

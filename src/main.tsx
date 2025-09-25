@@ -8,6 +8,7 @@ import { PostHogProvider } from "posthog-js/react";
 import "./assets/shimmer.css";
 import "./styles.css";
 import AppIcon from "./assets/nfo/asterisk-logo.png";
+import { LanguageProvider } from "./contexts/LanguageContext";
 
 // Initialize analytics before rendering
 analytics.initialize();
@@ -55,7 +56,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     >
       <ErrorBoundary>
         <AnalyticsErrorBoundary>
-          <App />
+          <LanguageProvider>
+            <App />
+          </LanguageProvider>
         </AnalyticsErrorBoundary>
       </ErrorBoundary>
     </PostHogProvider>

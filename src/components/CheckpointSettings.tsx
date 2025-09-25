@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { 
+import { useTranslation } from "react-i18next";
+import {
   Wrench,
   Save,
   Trash2,
@@ -41,6 +42,7 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
   projectPath,
   className,
 }) => {
+  const { t } = useTranslation();
   const [autoCheckpointEnabled, setAutoCheckpointEnabled] = useState(true);
   const [checkpointStrategy, setCheckpointStrategy] = useState<CheckpointStrategy>("smart");
   const [totalCheckpoints, setTotalCheckpoints] = useState(0);
@@ -51,10 +53,10 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const strategyOptions: SelectOption[] = [
-    { value: "manual", label: "Manual Only" },
-    { value: "per_prompt", label: "After Each Prompt" },
-    { value: "per_tool_use", label: "After Tool Use" },
-    { value: "smart", label: "Smart (Recommended)" },
+    { value: "manual", label: t("checkpoint.strategyOptions.manual") },
+    { value: "per_prompt", label: t("checkpoint.strategyOptions.perPrompt") },
+    { value: "per_tool_use", label: t("checkpoint.strategyOptions.perToolUse") },
+    { value: "smart", label: t("checkpoint.strategyOptions.smart") },
   ];
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
       setTotalCheckpoints(settings.total_checkpoints);
     } catch (err) {
       console.error("Failed to load checkpoint settings:", err);
-      setError("Failed to load checkpoint settings");
+      setError(t("checkpoint.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -92,11 +94,11 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
         checkpointStrategy
       );
       
-      setSuccessMessage("Settings saved successfully");
+      setSuccessMessage(t("checkpoint.saveSuccess"));
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error("Failed to save checkpoint settings:", err);
-      setError("Failed to save checkpoint settings");
+      setError(t("checkpoint.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -122,7 +124,7 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
       await loadSettings();
     } catch (err) {
       console.error("Failed to cleanup checkpoints:", err);
-      setError("Failed to cleanup checkpoints");
+      setError(t("checkpoint.cleanupFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -143,8 +145,8 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
             <Wrench className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-heading-4 font-semibold">Checkpoint Settings</h3>
-            <p className="text-caption text-muted-foreground mt-0.5">Manage session checkpoints and recovery</p>
+            <h3 className="text-heading-4 font-semibold">{t("checkpoint.title")}</h3>
+            <p className="text-caption text-muted-foreground mt-0.5">{t("checkpoint.subtitle")}</p>
           </div>
         </div>
       </div>
@@ -154,9 +156,9 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
         <div className="flex items-start gap-2.5">
           <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
           <div className="space-y-0.5">
-            <p className="text-caption font-medium text-amber-900 dark:text-amber-100">Experimental Feature</p>
+            <p className="text-caption font-medium text-amber-900 dark:text-amber-100">{t("checkpoint.experimentalFeature")}</p>
             <p className="text-caption text-amber-700 dark:text-amber-300">
-              Checkpointing may affect directory structure or cause data loss. Use with caution.
+              {t("checkpoint.experimentalWarning")}
             </p>
           </div>
         </div>
@@ -192,9 +194,9 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
         {/* Auto-checkpoint toggle */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="auto-checkpoint" className="text-label">Automatic Checkpoints</Label>
+            <Label htmlFor="auto-checkpoint" className="text-label">{t("checkpoint.autoCheckpoint")}</Label>
             <p className="text-caption text-muted-foreground">
-              Automatically create checkpoints based on the selected strategy
+              {t("checkpoint.autoCheckpointDesc")}
             </p>
           </div>
           <Switch
@@ -207,7 +209,7 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
 
         {/* Checkpoint strategy */}
         <div className="space-y-2">
-          <Label htmlFor="strategy" className="text-label">Checkpoint Strategy</Label>
+          <Label htmlFor="strategy" className="text-label">{t("checkpoint.strategy")}</Label>
           <SelectComponent
             value={checkpointStrategy}
             onValueChange={(value: string) => setCheckpointStrategy(value as CheckpointStrategy)}
@@ -215,10 +217,10 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
             disabled={isLoading || !autoCheckpointEnabled}
           />
           <p className="text-caption text-muted-foreground">
-            {checkpointStrategy === "manual" && "Checkpoints will only be created manually"}
-            {checkpointStrategy === "per_prompt" && "A checkpoint will be created after each user prompt"}
-            {checkpointStrategy === "per_tool_use" && "A checkpoint will be created after each tool use"}
-            {checkpointStrategy === "smart" && "Checkpoints will be created after destructive operations"}
+            {checkpointStrategy === "manual" && t("checkpoint.strategyDescriptions.manual")}
+            {checkpointStrategy === "per_prompt" && t("checkpoint.strategyDescriptions.perPrompt")}
+            {checkpointStrategy === "per_tool_use" && t("checkpoint.strategyDescriptions.perToolUse")}
+            {checkpointStrategy === "smart" && t("checkpoint.strategyDescriptions.smart")}
           </p>
         </div>
 
@@ -236,12 +238,12 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
             {isSaving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {t("checkpoint.saving")}
               </>
             ) : (
               <>
                 <Save className="h-4 w-4 mr-2" />
-                Save Settings
+                {t("checkpoint.saveSettings")}
               </>
             )}
           </Button>
@@ -254,17 +256,17 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <HardDrive className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-label">Storage Management</Label>
+              <Label className="text-label">{t("checkpoint.management")}</Label>
             </div>
             <p className="text-caption text-muted-foreground">
-              Total checkpoints: <span className="font-medium text-foreground">{totalCheckpoints}</span>
+              {t("checkpoint.totalCheckpoints")} <span className="font-medium text-foreground">{totalCheckpoints}</span>
             </p>
           </div>
         </div>
 
         {/* Cleanup settings */}
         <div className="space-y-2">
-          <Label htmlFor="keep-count" className="text-label">Keep Recent Checkpoints</Label>
+          <Label htmlFor="keep-count" className="text-label">{t("checkpoint.keepCount")}</Label>
           <div className="flex gap-2">
             <Input
               id="keep-count"
@@ -288,12 +290,12 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
                 className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                Clean Up
+                {t("checkpoint.cleanupOld")}
               </Button>
             </motion.div>
           </div>
           <p className="text-caption text-muted-foreground">
-            Remove old checkpoints, keeping only the most recent {keepCount}
+            {t("checkpoint.cleanupOldDesc")} {keepCount}
           </p>
         </div>
       </Card>

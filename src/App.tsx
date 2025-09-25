@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Bot, FolderCode } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api, type Project, type Session, type ClaudeMdFile } from "@/lib/api";
 import { OutputCacheProvider } from "@/lib/outputCache";
 import { TabProvider } from "@/contexts/TabContext";
@@ -46,6 +47,7 @@ type View =
  * AppContent component - Contains the main app logic, wrapped by providers
  */
 function AppContent() {
+  const { t } = useTranslation();
   const [view, setView] = useState<View>("tabs");
   const { createClaudeMdTab, createSettingsTab, createUsageTab, createMCPTab, createAgentsTab } = useTabState();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -157,7 +159,7 @@ function AppContent() {
       setProjects(projectList);
     } catch (err) {
       console.error("Failed to load projects:", err);
-      setError("Failed to load projects. Please ensure ~/.claude directory exists.");
+      setError(t("errors.failedToLoadProjects"));
     } finally {
       setLoading(false);
     }
@@ -175,7 +177,7 @@ function AppContent() {
       setSelectedProject(project);
     } catch (err) {
       console.error("Failed to load sessions:", err);
-      setError("Failed to load sessions for this project.");
+      setError(t("errors.failedToLoadSessions"));
     } finally {
       setLoading(false);
     }
@@ -259,7 +261,7 @@ function AppContent() {
                   >
                     <div className="h-full flex flex-col items-center justify-center p-8">
                       <Bot className="h-16 w-16 mb-4 text-primary" />
-                      <h2 className="text-xl font-semibold">CC Agents</h2>
+                      <h2 className="text-xl font-semibold">{t("agents.title")}</h2>
                     </div>
                   </Card>
                 </motion.div>
@@ -276,7 +278,7 @@ function AppContent() {
                   >
                     <div className="h-full flex flex-col items-center justify-center p-8">
                       <FolderCode className="h-16 w-16 mb-4 text-primary" />
-                      <h2 className="text-xl font-semibold">Projects</h2>
+                      <h2 className="text-xl font-semibold">{t("onboarding.welcomeTitle")}</h2>
                     </div>
                   </Card>
                 </motion.div>
@@ -407,7 +409,7 @@ function AppContent() {
         open={showClaudeBinaryDialog}
         onOpenChange={setShowClaudeBinaryDialog}
         onSuccess={() => {
-          setToast({ message: "Claude binary path saved successfully", type: "success" });
+          setToast({ message: t("settings.toast.settingsSaved"), type: "success" });
           // Trigger a refresh of the Claude version check
           window.location.reload();
         }}
@@ -430,7 +432,7 @@ function AppContent() {
                     await handleProjectClick(project);
                   } catch (err) {
                     console.error('Failed to create project:', err);
-                    setError('Failed to create project for the selected directory.');
+                    setError(t('errors.failedToCreateProject'));
                   }
                 }
               }}
@@ -468,7 +470,7 @@ function AppContent() {
                     await handleProjectClick(project);
                   } catch (err) {
                     console.error('Failed to create project:', err);
-                    setError('Failed to create project for the selected directory.');
+                    setError(t('errors.failedToCreateProject'));
                   }
                 }
               }}

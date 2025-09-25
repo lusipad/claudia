@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Copy,
@@ -75,6 +76,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   onStreamingChange,
   onProjectPathChange,
 }) => {
+  const { t } = useTranslation();
   const [projectPath] = useState(initialProjectPath || session?.project_path || "");
   const [messages, setMessages] = useState<ClaudeStreamMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -331,7 +333,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       }, 100);
     } catch (err) {
       console.error("Failed to load session history:", err);
-      setError("Failed to load session history");
+      setError(t("errors.failedToLoadHistory"));
     } finally {
       setIsLoading(false);
     }
@@ -490,6 +492,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           console.log('[ClaudeCodeSession] Attaching session-specific listeners for', sid);
 
           const specificOutputUnlisten = await listen<string>(`claude-output:${sid}`, (evt) => {
+            console.log('[ClaudeCodeSession] Received session-specific message:', sid);
             handleStreamMessage(evt.payload);
           });
 
@@ -503,13 +506,14 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             processComplete(evt.payload);
           });
 
-          // Replace existing unlisten refs with these new ones (after cleaning up)
+          // IMPORTANT: Clean up existing listeners first to prevent duplicates
           unlistenRefs.current.forEach((u) => u());
           unlistenRefs.current = [specificOutputUnlisten, specificErrorUnlisten, specificCompleteUnlisten];
         };
 
         // Generic listeners (catch-all)
         const genericOutputUnlisten = await listen<string>('claude-output', async (event) => {
+          console.log('[ClaudeCodeSession] Received generic message');
           handleStreamMessage(event.payload);
 
           // Attempt to extract session_id on the fly (for the very first init)
@@ -525,7 +529,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                 if (!extractedSessionInfo) {
                   const projectId = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
                   setExtractedSessionInfo({ sessionId: msg.session_id, projectId });
-                  
+
                   // Save session data for restoration
                   SessionPersistenceService.saveSession(
                     msg.session_id,
@@ -535,7 +539,8 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   );
                 }
 
-                // Switch to session-specific listeners
+                // Switch to session-specific listeners and clean up generic ones
+                console.log('[ClaudeCodeSession] Switching to session-specific listeners...');
                 await attachSessionSpecificListeners(msg.session_id);
               }
             }
@@ -545,15 +550,34 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         });
 
         // Helper to process any JSONL stream message string
+        // Use a Set to track processed message IDs to prevent duplicates
+        const processedMessages = new Set<string>();
+
         function handleStreamMessage(payload: string) {
           try {
             // Don't process if component unmounted
             if (!isMountedRef.current) return;
-            
+
+            // Parse the message to get a unique identifier
+            const message = JSON.parse(payload) as ClaudeStreamMessage;
+
+            // Create a unique message ID for deduplication
+            const messageId = message.timestamp ||
+                            (message.message?.usage ? `${message.type}-${message.message.usage.input_tokens}-${message.message.usage.output_tokens}` : null) ||
+                            (message.session_id ? `${message.type}-${message.session_id}` : null) ||
+                            `${message.type}-${Date.now()}-${Math.random()}`;
+
+            // Check if we've already processed this message
+            if (processedMessages.has(messageId)) {
+              console.log('[ClaudeCodeSession] Skipping duplicate message:', messageId);
+              return;
+            }
+
+            // Mark this message as processed
+            processedMessages.add(messageId);
+
             // Store raw JSONL
             setRawJsonlOutput((prev) => [...prev, payload]);
-
-            const message = JSON.parse(payload) as ClaudeStreamMessage;
             
             // Track enhanced tool execution
             if (message.type === 'assistant' && message.message?.content) {
@@ -814,7 +838,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       }
     } catch (err) {
       console.error("Failed to send prompt:", err);
-      setError("Failed to send prompt");
+      setError(t("errors.failedToSendPrompt"));
       setIsLoading(false);
       hasActiveSessionRef.current = false;
     }

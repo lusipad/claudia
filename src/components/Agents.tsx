@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Play, Clock, CheckCircle, XCircle, Trash2, Import, ChevronDown, ChevronRight, FileJson, Globe, Download, Plus, History, Edit } from 'lucide-react';
 import {
@@ -20,6 +21,7 @@ import { CreateAgent } from '@/components/CreateAgent';
 import { useTabState } from '@/hooks/useTabState';
 
 export const Agents: React.FC = () => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('agents');
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
@@ -131,7 +133,7 @@ export const Agents: React.FC = () => {
 
       if (selected) {
         const importedAgent = await api.importAgentFromFile(selected as string);
-        setToast({ message: `Imported agent: ${importedAgent.name}`, type: 'success' });
+        setToast({ message: `${t("agents.importedAgent")}: ${importedAgent.name}`, type: 'success' });
         loadAgents();
       }
     } catch (error) {
@@ -206,9 +208,9 @@ export const Agents: React.FC = () => {
         <div className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
+              <h1 className="text-3xl font-bold tracking-tight">{t("agents.title")}</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Manage your Claude Code agents
+                {t("agents.subtitle")}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -216,7 +218,7 @@ export const Agents: React.FC = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">
                     <Import className="w-4 h-4 mr-2" />
-                    Import
+                    {t("agents.importAgent")}
                     <ChevronDown className="w-4 h-4 ml-2" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -234,7 +236,7 @@ export const Agents: React.FC = () => {
 
               <Button onClick={() => setShowCreateAgent(true)}>
                 <Plus className="w-4 h-4 mr-2" />
-                Create Agent
+                {t("agents.createAgent")}
               </Button>
             </div>
           </div>
@@ -315,11 +317,11 @@ export const Agents: React.FC = () => {
             <TabsList className="grid grid-cols-2 w-full max-w-md mb-6 h-auto p-1">
               <TabsTrigger value="agents" className="py-2.5 px-3">
                 <Bot className="w-4 h-4 mr-2" />
-                Agents ({agents.length})
+                {t("agents.agentsCount")} ({agents.length})
               </TabsTrigger>
               <TabsTrigger value="running" className="py-2.5 px-3">
                 <History className="w-4 h-4 mr-2" />
-                History ({runningAgents.length})
+                {t("agents.historyCount")} ({runningAgents.length})
               </TabsTrigger>
             </TabsList>
 
@@ -331,13 +333,13 @@ export const Agents: React.FC = () => {
               ) : agents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-center">
                   <Bot className="w-12 h-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Agents Yet</h3>
+                  <h3 className="text-lg font-semibold mb-2">{t("agents.noAgentsYet")}</h3>
                   <p className="text-muted-foreground mb-4">
-                    Create your first agent to get started
+                    {t("agents.noAgentsDescription")}
                   </p>
                   <Button onClick={() => setShowCreateAgent(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Agent
+                    {t("agents.createAgent")}
                   </Button>
                 </div>
               ) : (
@@ -412,7 +414,7 @@ export const Agents: React.FC = () => {
                 <Card className="p-12">
                   <div className="flex flex-col items-center justify-center text-center">
                     <History className="w-12 h-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Agent History</h3>
+                    <h3 className="text-lg font-semibold mb-2">{t("agents.noAgentHistory")}</h3>
                     <p className="text-muted-foreground">
                       Run an agent to see it here
                     </p>

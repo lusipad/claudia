@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { 
   CheckCircle2, 
   Circle, 
@@ -572,6 +573,8 @@ export const ReadResultWidget: React.FC<{ content: string; filePath?: string }> 
  * Widget for Glob tool
  */
 export const GlobWidget: React.FC<{ pattern: string; result?: any }> = ({ pattern, result }) => {
+  const { t } = useTranslation();
+
   // Extract result content if available
   let resultContent = '';
   let isError = false;
@@ -617,7 +620,7 @@ export const GlobWidget: React.FC<{ pattern: string; result?: any }> = ({ patter
             ? "border-red-500/20 bg-red-500/5 text-red-400" 
             : "border-green-500/20 bg-green-500/5 text-green-300"
         )}>
-          {resultContent || (isError ? "Search failed" : "No matches found")}
+          {resultContent || (isError ? t("errors.searchFailed") : t("errors.noMatchesFound"))}
         </div>
       )}
     </div>
@@ -867,13 +870,14 @@ export const WriteWidget: React.FC<{ filePath: string; content: string; result?:
 /**
  * Widget for Grep tool
  */
-export const GrepWidget: React.FC<{ 
-  pattern: string; 
-  include?: string; 
+export const GrepWidget: React.FC<{
+  pattern: string;
+  include?: string;
   path?: string;
   exclude?: string;
   result?: any;
 }> = ({ pattern, include, path, exclude, result }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   
   // Extract result content if available
@@ -1001,7 +1005,7 @@ export const GrepWidget: React.FC<{
             <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
               <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
               <div className="text-sm text-red-600 dark:text-red-400">
-                {resultContent || "Search failed"}
+                {resultContent || t("errors.searchFailed")}
               </div>
             </div>
           ) : grepResults.length > 0 ? (

@@ -22,10 +22,10 @@ export class ConsentManager {
       if (stored) {
         this.settings = JSON.parse(stored);
       } else {
-        // Initialize with default settings
+        // Initialize with privacy-first defaults (analytics disabled)
         this.settings = {
-          enabled: true,
-          hasConsented: true,
+          enabled: false,
+          hasConsented: false,
         };
       }
       
@@ -40,16 +40,18 @@ export class ConsentManager {
         this.settings.sessionId = this.generateSessionId();
       }
       
-      return this.settings || {
-        enabled: true,
-        hasConsented: true,
-      };
+      return (
+        this.settings || {
+          enabled: false,
+          hasConsented: false,
+        }
+      );
     } catch (error) {
       console.error('Failed to initialize consent manager:', error);
       // Return default settings on error
       return {
-        enabled: true,
-        hasConsented: true,
+        enabled: false,
+        hasConsented: false,
       };
     }
   }
@@ -70,9 +72,10 @@ export class ConsentManager {
     if (!this.settings) {
       await this.initialize();
     }
-    
+
     this.settings!.enabled = false;
-    
+    this.settings!.hasConsented = false;
+
     await this.saveSettings();
   }
   
@@ -82,8 +85,8 @@ export class ConsentManager {
     
     // Reset settings with new anonymous ID
     this.settings = {
-      enabled: true,
-      hasConsented: true,
+      enabled: false,
+      hasConsented: false,
       userId: this.generateAnonymousId(),
       sessionId: this.generateSessionId(),
     };

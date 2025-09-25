@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { 
   GitBranch, 
@@ -57,6 +58,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
   onCheckpointCreated,
   className
 }) => {
+  const { t } = useTranslation();
   const [timeline, setTimeline] = useState<SessionTimeline | null>(null);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<Checkpoint | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -90,7 +92,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
       }
     } catch (err) {
       console.error("Failed to load timeline:", err);
-      setError("Failed to load timeline");
+      setError(t("errors.failedToLoadTimeline"));
     } finally {
       setIsLoading(false);
     }
@@ -143,7 +145,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
       await loadTimeline();
     } catch (err) {
       console.error("Failed to create checkpoint:", err);
-      setError("Failed to create checkpoint");
+      setError(t("errors.failedToCreateCheckpoint"));
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +185,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
       onCheckpointSelect(checkpoint);
     } catch (err) {
       console.error("Failed to restore checkpoint:", err);
-      setError("Failed to restore checkpoint");
+      setError(t("errors.failedToRestoreCheckpoint"));
     } finally {
       setIsLoading(false);
     }
@@ -215,7 +217,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
       setShowDiffDialog(true);
     } catch (err) {
       console.error("Failed to get diff:", err);
-      setError("Failed to compare checkpoints");
+      setError(t("errors.failedToCompareCheckpoints"));
     } finally {
       setIsLoading(false);
     }
