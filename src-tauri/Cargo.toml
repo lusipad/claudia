@@ -17,19 +17,19 @@ name = "opcode_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.4.1", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [ "macos-private-api", "protocol-asset", "tray-icon", "image-png"] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-notification = "2"
-tauri-plugin-clipboard-manager = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-http = "2"
+tauri = { version = "2.4.1", features = [ "macos-private-api", "protocol-asset", "tray-icon", "image-png"] }
+tauri-plugin-shell = "2.3"
+tauri-plugin-dialog = "2.3"
+tauri-plugin-fs = "2.3"
+tauri-plugin-process = "2.3"
+tauri-plugin-updater = "2.3"
+tauri-plugin-notification = "2.3"
+tauri-plugin-clipboard-manager = "2.3"
+tauri-plugin-global-shortcut = "2.3"
+tauri-plugin-http = "2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
