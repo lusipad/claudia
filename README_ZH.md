@@ -33,6 +33,14 @@ https://github.com/user-attachments/assets/6bceea0f-60b6-4c3e-a745-b891de00b8d0
 > [!NOTE]
 > 本项目与 Anthropic 无关联、未获授权或赞助。Claude 是 Anthropic, PBC 的商标。这是一个使用 Claude 的独立开发者项目。
 
+> [!IMPORTANT]
+> **本版本说明**：这是基于 [getAsterisk/opcode](https://github.com/getAsterisk/opcode) 的改进版本，主要包含以下增强功能：
+> - 🌐 **完整中文界面**：全面的中文本地化支持
+> - ⌨️ **IME 输入优化**：改进了中文输入法的兼容性
+> - 🎨 **界面优化**：针对中文用户习惯的 UI 调整
+> - 🐛 **问题修复**：解决了一些影响中文用户的问题
+> - 🔧 **配置改进**：优化了 Claude 二进制检测和 NVM 环境支持
+
 ## 🌟 概述
 
 **opcode** 是一个强大的桌面应用程序，彻底改变了您与 Claude Code 的交互方式。基于 Tauri 2 构建，为管理 Claude Code 会话、创建自定义代理、跟踪使用情况等提供了美观的 GUI。
@@ -421,3 +429,9 @@ opcode 优先考虑您的隐私和安全：
 ## Star 历史
 
 [![Star History Chart](https://api.star-history.com/svg?repos=getAsterisk/opcode&type=Date)](https://www.star-history.com/#getAsterisk/opcode&Date)
+
+---
+
+## 📚 English Version
+
+For the English version of this README, please see [README.md](README.md).

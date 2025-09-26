@@ -425,3 +425,9 @@ This project is licensed under the AGPL License - see the [LICENSE](LICENSE) fil
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=getAsterisk/opcode&type=Date)](https://www.star-history.com/#getAsterisk/opcode&Date)
+
+---
+
+## 🌏 中文版本
+
+中文版说明文档请查看 [README_ZH.md](README_ZH.md)。
