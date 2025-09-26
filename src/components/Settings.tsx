@@ -107,6 +107,7 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
   const [tabPersistenceEnabled, setTabPersistenceEnabled] = useState(true);
   // Startup intro preference
   const [startupIntroEnabled, setStartupIntroEnabled] = useState(true);
+  const [titlebarControlsPosition, setTitlebarControlsPosition] = useState<"left" | "right">("left");
 
   // Load settings on mount
   useEffect(() => {
@@ -119,6 +120,16 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
     (async () => {
       const pref = await api.getSetting("startup_intro_enabled");
       setStartupIntroEnabled(pref === null ? true : pref === "true");
+    })();
+    (async () => {
+      try {
+        const stored = await api.getSetting("titlebar_controls_position");
+        if (stored === "left" || stored === "right") {
+          setTitlebarControlsPosition(stored);
+        }
+      } catch (error) {
+        console.warn("Failed to load titlebar controls position:", error);
+      }
     })();
   }, []);
 
@@ -239,6 +250,35 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
     },
     [setLanguagePreference, t],
   );
+
+  const handleTitlebarControlsChange = async (position: "left" | "right") => {
+    if (position === titlebarControlsPosition) {
+      return;
+    }
+
+    const previous = titlebarControlsPosition;
+    setTitlebarControlsPosition(position);
+
+    try {
+      await api.saveSetting("titlebar_controls_position", position);
+      window.dispatchEvent(
+        new CustomEvent("titlebar-controls-position-changed", {
+          detail: { position },
+        })
+      );
+      setToast({
+        message: t("settings.general.titlebarControls.saved"),
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Failed to update titlebar controls position:", error);
+      setTitlebarControlsPosition(previous);
+      setToast({
+        message: t("settings.general.titlebarControls.saveFailed"),
+        type: "error",
+      });
+    }
+  };
 
   /**
    * Saves the current settings
@@ -582,6 +622,32 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
                             )}
                             {t("settings.general.themeOptions.custom")}
                           </button>
+                        </div>
+                      </div>
+
+                      {/* Titlebar controls position */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>{t("settings.general.titlebarControls.label")}</Label>
+                          <p className="text-caption text-muted-foreground mt-1">
+                            {t("settings.general.titlebarControls.description")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant={titlebarControlsPosition === "left" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => handleTitlebarControlsChange("left")}
+                          >
+                            {t("settings.general.titlebarControls.mac")}
+                          </Button>
+                          <Button
+                            variant={titlebarControlsPosition === "right" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => handleTitlebarControlsChange("right")}
+                          >
+                            {t("settings.general.titlebarControls.windows")}
+                          </Button>
                         </div>
                       </div>
 

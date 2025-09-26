@@ -12,6 +12,7 @@ interface CustomTitlebarProps {
   onClaudeClick?: () => void;
   onMCPClick?: () => void;
   onInfoClick?: () => void;
+  controlsPosition?: "left" | "right";
 }
 
 export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
@@ -20,7 +21,8 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
   onUsageClick,
   onClaudeClick,
   onMCPClick,
-  onInfoClick
+  onInfoClick,
+  controlsPosition = "left",
 }) => {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
@@ -74,71 +76,107 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
     }
   };
 
+  const macWindowControls = (
+    <div className="flex items-center space-x-2">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleClose();
+        }}
+        className="group relative w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
+        title={t('titlebar.close')}
+      >
+        {isHovered && (
+          <X size={8} className="text-red-900 opacity-60 group-hover:opacity-100" />
+        )}
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleMinimize();
+        }}
+        className="group relative w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
+        title={t('titlebar.minimize')}
+      >
+        {isHovered && (
+          <Minus size={8} className="text-yellow-900 opacity-60 group-hover:opacity-100" />
+        )}
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleMaximize();
+        }}
+        className="group relative w-3 h-3 rounded-full bg-green-500 hover:bg-green-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
+        title={t('titlebar.maximize')}
+      >
+        {isHovered && (
+          <Square size={6} className="text-green-900 opacity-60 group-hover:opacity-100" />
+        )}
+      </button>
+    </div>
+  );
+
+  const windowsWindowControls = (
+    <div className="flex items-center tauri-no-drag">
+      <div className="flex overflow-hidden rounded-md border border-border/60">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMinimize();
+          }}
+          className="w-10 h-7 flex items-center justify-center hover:bg-accent/30 transition-colors"
+          title={t('titlebar.minimize')}
+        >
+          <Minus size={14} className="text-muted-foreground" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMaximize();
+          }}
+          className="w-10 h-7 flex items-center justify-center hover:bg-accent/30 transition-colors"
+          title={t('titlebar.maximize')}
+        >
+          <Square size={12} className="text-muted-foreground" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClose();
+          }}
+          className="w-10 h-7 flex items-center justify-center hover:bg-destructive/20 transition-colors"
+          title={t('titlebar.close')}
+        >
+          <X size={12} className="text-destructive" />
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <TooltipProvider>
-    <div 
-      className="relative z-[200] h-11 bg-background/95 backdrop-blur-sm flex items-center justify-between select-none border-b border-border/50 tauri-drag"
-      data-tauri-drag-region
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Left side - macOS Traffic Light buttons */}
-      <div className="flex items-center space-x-2 pl-5">
-        <div className="flex items-center space-x-2">
-          {/* Close button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClose();
-            }}
-            className="group relative w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-            title={t("titlebar.close")}
-          >
-            {isHovered && (
-              <X size={8} className="text-red-900 opacity-60 group-hover:opacity-100" />
-            )}
-          </button>
-
-          {/* Minimize button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleMinimize();
-            }}
-            className="group relative w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-            title={t("titlebar.minimize")}
-          >
-            {isHovered && (
-              <Minus size={8} className="text-yellow-900 opacity-60 group-hover:opacity-100" />
-            )}
-          </button>
-
-          {/* Maximize button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleMaximize();
-            }}
-            className="group relative w-3 h-3 rounded-full bg-green-500 hover:bg-green-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-            title={t("titlebar.maximize")}
-          >
-            {isHovered && (
-              <Square size={6} className="text-green-900 opacity-60 group-hover:opacity-100" />
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Center - Title (hidden) */}
-      {/* <div 
-        className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+      <div
+        className="relative z-[200] h-11 bg-background/95 backdrop-blur-sm flex items-center select-none border-b border-border/50 tauri-drag w-full"
         data-tauri-drag-region
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        <span className="text-sm font-medium text-foreground/80">{title}</span>
-      </div> */}
+        {controlsPosition === "left" ? (
+          <div className="flex items-center space-x-2 pl-5 pr-4">
+            {macWindowControls}
+          </div>
+        ) : (
+          <div className="pl-5" />
+        )}
 
-      {/* Right side - Navigation icons with improved spacing */}
-      <div className="flex items-center pr-5 gap-3 tauri-no-drag">
+        <div className="ml-auto flex items-center pr-5 gap-3 tauri-no-drag">
+          {controlsPosition === "right" && (
+            <div className="mr-3 flex items-center">{windowsWindowControls}</div>
+          )}
+
         {/* Primary actions group */}
         <div className="flex items-center gap-1">
           {onAgentsClick && (
@@ -246,7 +284,7 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
           </div>
         </div>
       </div>
-    </div>
+      </div>
     </TooltipProvider>
   );
 };

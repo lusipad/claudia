@@ -982,3 +982,47 @@ code::-webkit-scrollbar-thumb:hover {
 .image-move-to-input {
   animation: moveToInput 0.8s ease-in-out forwards;
 } 
+
+.chat-font-scale {
+  --chat-font-scale: 1;
+  font-size: calc(var(--chat-font-scale) * 1rem);
+  line-height: calc(1.6 * var(--chat-font-scale));
+}
+
+.chat-font-scale .text-lg,
+.chat-font-scale.text-lg {
+  font-size: calc(var(--chat-font-scale) * 1.125rem) !important;
+}
+
+.chat-font-scale .text-base,
+.chat-font-scale.text-base {
+  font-size: calc(var(--chat-font-scale) * 1rem) !important;
+}
+
+.chat-font-scale .text-sm,
+.chat-font-scale.text-sm {
+  font-size: calc(var(--chat-font-scale) * 0.875rem) !important;
+}
+
+.chat-font-scale .text-xs,
+.chat-font-scale.text-xs {
+  font-size: calc(var(--chat-font-scale) * 0.75rem) !important;
+}
+
+.chat-font-scale pre,
+.chat-font-scale code,
+.chat-font-scale .code,
+.chat-font-scale .prose pre,
+.chat-font-scale .prose code {
+  font-size: calc(var(--chat-font-scale) * 1rem) !important;
+}
+
+.chat-font-scale .prose {
+  font-size: calc(var(--chat-font-scale) * 1rem) !important;
+  line-height: calc(1.6 * var(--chat-font-scale));
+}
+
+.chat-font-scale .prose-sm {
+  font-size: calc(var(--chat-font-scale) * 0.875rem) !important;
+  line-height: calc(1.6 * var(--chat-font-scale));
+}

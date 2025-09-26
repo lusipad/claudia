@@ -63,6 +63,7 @@ function AppContent() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [projectForSettings, setProjectForSettings] = useState<Project | null>(null);
   const [previousView] = useState<View>("welcome");
+  const [titlebarControlsPosition, setTitlebarControlsPosition] = useState<"left" | "right">("left");
   
   // Initialize analytics lifecycle tracking
   useAppLifecycle();
@@ -145,6 +146,37 @@ function AppContent() {
     window.addEventListener('claude-not-found', handleClaudeNotFound as EventListener);
     return () => {
       window.removeEventListener('claude-not-found', handleClaudeNotFound as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTitlebarPreference = async () => {
+      try {
+        const stored = await api.getSetting('titlebar_controls_position');
+        if (!cancelled && (stored === 'left' || stored === 'right')) {
+          setTitlebarControlsPosition(stored);
+        }
+      } catch (error) {
+        console.warn('Failed to load titlebar controls position:', error);
+      }
+    };
+
+    loadTitlebarPreference();
+
+    const handleChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ position: 'left' | 'right' }>).detail;
+      if (detail?.position === 'left' || detail?.position === 'right') {
+        setTitlebarControlsPosition(detail.position);
+      }
+    };
+
+    window.addEventListener('titlebar-controls-position-changed', handleChange as EventListener);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('titlebar-controls-position-changed', handleChange as EventListener);
     };
   }, []);
 
@@ -381,6 +413,7 @@ function AppContent() {
         onMCPClick={() => createMCPTab()}
         onSettingsClick={() => createSettingsTab()}
         onInfoClick={() => setShowNFO(true)}
+        controlsPosition={titlebarControlsPosition}
       />
       
       {/* Topbar - Commented out since navigation moved to titlebar */}
