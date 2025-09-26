@@ -389,17 +389,38 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     isListeningRef.current = true;
     
     // Set up session-specific listeners
+    const processedPayloads = new Set<string>();
+    const processedMessageIds = new Set<string>();
+
     const outputUnlisten = await listen<string>(`claude-output:${sessionId}`, async (event) => {
       try {
         console.log('[ClaudeCodeSession] Received claude-output on reconnect:', event.payload);
         
         if (!isMountedRef.current) return;
-        
+
+        if (processedPayloads.has(event.payload)) {
+          console.log('[ClaudeCodeSession] Skipping duplicate payload on reconnect');
+          return;
+        }
+
         // Store raw JSONL
         setRawJsonlOutput(prev => [...prev, event.payload]);
         
         // Parse and display
         const message = JSON.parse(event.payload) as ClaudeStreamMessage;
+
+        const messageId = message.timestamp ||
+          (message.message?.usage ? `${message.type}-${message.message.usage.input_tokens}-${message.message.usage.output_tokens}` : null) ||
+          (message.session_id ? `${message.type}-${message.session_id}` : null) ||
+          `${message.type}-${Date.now()}-${Math.random()}`;
+
+        if (processedMessageIds.has(messageId)) {
+          console.log('[ClaudeCodeSession] Skipping duplicate message on reconnect');
+          return;
+        }
+
+        processedPayloads.add(event.payload);
+        processedMessageIds.add(messageId);
         setMessages(prev => [...prev, message]);
       } catch (err) {
         console.error("Failed to parse message:", err, event.payload);
@@ -487,9 +508,44 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
         let currentSessionId: string | null = claudeSessionId || effectiveSession?.id || null;
 
-        // Helper to attach session-specific listeners **once we are sure**
+        let genericOutputUnlisten: UnlistenFn | null = null;
+        let genericErrorUnlisten: UnlistenFn | null = null;
+        let genericCompleteUnlisten: UnlistenFn | null = null;
+
+        const removeFromActive = (fn: UnlistenFn | null) => {
+          if (!fn) return;
+          unlistenRefs.current = unlistenRefs.current.filter((listener) => listener !== fn);
+        };
+
+        const stopGenericListeners = () => {
+          if (genericOutputUnlisten) {
+            const fn = genericOutputUnlisten;
+            genericOutputUnlisten = null;
+            fn();
+            removeFromActive(fn);
+          }
+          if (genericErrorUnlisten) {
+            const fn = genericErrorUnlisten;
+            genericErrorUnlisten = null;
+            fn();
+            removeFromActive(fn);
+          }
+          if (genericCompleteUnlisten) {
+            const fn = genericCompleteUnlisten;
+            genericCompleteUnlisten = null;
+            fn();
+            removeFromActive(fn);
+          }
+        };
+
         const attachSessionSpecificListeners = async (sid: string) => {
           console.log('[ClaudeCodeSession] Attaching session-specific listeners for', sid);
+
+          // Immediately stop generic listeners to avoid duplicate handling
+          stopGenericListeners();
+
+          unlistenRefs.current.forEach((u) => u());
+          unlistenRefs.current = [];
 
           const specificOutputUnlisten = await listen<string>(`claude-output:${sid}`, (evt) => {
             console.log('[ClaudeCodeSession] Received session-specific message:', sid);
@@ -506,13 +562,11 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             processComplete(evt.payload);
           });
 
-          // IMPORTANT: Clean up existing listeners first to prevent duplicates
-          unlistenRefs.current.forEach((u) => u());
           unlistenRefs.current = [specificOutputUnlisten, specificErrorUnlisten, specificCompleteUnlisten];
         };
 
         // Generic listeners (catch-all)
-        const genericOutputUnlisten = await listen<string>('claude-output', async (event) => {
+        genericOutputUnlisten = await listen<string>('claude-output', async (event) => {
           console.log('[ClaudeCodeSession] Received generic message');
           handleStreamMessage(event.payload);
 
@@ -550,13 +604,21 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         });
 
         // Helper to process any JSONL stream message string
-        // Use a Set to track processed message IDs to prevent duplicates
+        // Use Sets to track processed payloads and IDs to prevent duplicates
+        const processedPayloads = new Set<string>();
         const processedMessages = new Set<string>();
+        let completionHandled = false;
 
         function handleStreamMessage(payload: string) {
           try {
             // Don't process if component unmounted
             if (!isMountedRef.current) return;
+
+            // Skip duplicate payloads (same message delivered on multiple channels)
+            if (processedPayloads.has(payload)) {
+              console.log('[ClaudeCodeSession] Skipping duplicate payload');
+              return;
+            }
 
             // Parse the message to get a unique identifier
             const message = JSON.parse(payload) as ClaudeStreamMessage;
@@ -574,6 +636,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             }
 
             // Mark this message as processed
+            processedPayloads.add(payload);
             processedMessages.add(messageId);
 
             // Store raw JSONL
@@ -654,6 +717,12 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
         // Helper to handle completion events (both generic and scoped)
         const processComplete = async (success: boolean) => {
+          if (completionHandled) {
+            return;
+          }
+          completionHandled = true;
+          // Ensure generic listeners are torn down when execution finishes
+          stopGenericListeners();
           setIsLoading(false);
           hasActiveSessionRef.current = false;
           isListeningRef.current = false; // Reset listening state
@@ -751,18 +820,22 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           }
         };
 
-        const genericErrorUnlisten = await listen<string>('claude-error', (evt) => {
+        genericErrorUnlisten = await listen<string>('claude-error', (evt) => {
           console.error('Claude error:', evt.payload);
           setError(evt.payload);
         });
 
-        const genericCompleteUnlisten = await listen<boolean>('claude-complete', (evt) => {
+        genericCompleteUnlisten = await listen<boolean>('claude-complete', (evt) => {
           console.log('[ClaudeCodeSession] Received claude-complete (generic):', evt.payload);
           processComplete(evt.payload);
         });
 
         // Store the generic unlisteners for now; they may be replaced later.
-        unlistenRefs.current = [genericOutputUnlisten, genericErrorUnlisten, genericCompleteUnlisten];
+        unlistenRefs.current = [
+          genericOutputUnlisten,
+          genericErrorUnlisten,
+          genericCompleteUnlisten,
+        ].filter((fn): fn is UnlistenFn => Boolean(fn));
 
         // --------------------------------------------------------------------
         // 2️⃣  Auto-checkpoint logic moved after listener setup (unchanged)

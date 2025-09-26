@@ -33,7 +33,6 @@ import {
   MultiEditWidget,
   MultiEditResultWidget,
   SystemReminderWidget,
-  SystemInitializedWidget,
   TaskWidget,
   LSResultWidget,
   ThinkingWidget,
@@ -94,16 +93,9 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
       return <SummaryWidget summary={message.summary} leafUuid={message.leafUuid} />;
     }
 
-    // System initialization message
+    // System initialization message (debug-only; hide in normal UI)
     if (message.type === "system" && message.subtype === "init") {
-      return (
-        <SystemInitializedWidget
-          sessionId={message.session_id}
-          model={message.model}
-          cwd={message.cwd}
-          tools={message.tools}
-        />
-      );
+      return null;
     }
 
     // Assistant message
@@ -638,7 +630,12 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
     // Result message - render with markdown
     if (message.type === "result") {
       const isError = message.is_error || message.subtype?.includes("error");
-      
+
+      if (!isError) {
+        // Successful completion banner is hidden by default
+        return null;
+      }
+
       return (
         <Card className={cn(
           isError ? "border-destructive/20 bg-destructive/5" : "border-green-500/20 bg-green-500/5",
