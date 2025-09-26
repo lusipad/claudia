@@ -8,6 +8,28 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::process::{Child, Command};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000; // CREATE_NO_WINDOW flag
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+fn apply_no_window_std(cmd: &mut std::process::Command) {
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_no_window_std(_cmd: &mut std::process::Command) {}
+
+#[cfg(target_os = "windows")]
+fn apply_no_window_tokio(cmd: &mut Command) {
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_no_window_tokio(_cmd: &mut Command) {}
 use tokio::sync::Mutex;
 
 
@@ -230,6 +252,7 @@ fn create_command_with_env(program: &str) -> Command {
 
     // Create a new tokio Command from the program path
     let mut tokio_cmd = Command::new(program);
+    apply_no_window_tokio(&mut tokio_cmd);
 
     // Copy over all environment variables
     for (key, value) in std::env::vars() {
@@ -596,6 +619,7 @@ pub async fn open_new_session(app: AppHandle, path: Option<String>) -> Result<St
     #[cfg(debug_assertions)]
     {
         let mut cmd = std::process::Command::new(claude_path);
+        apply_no_window_std(&mut cmd);
 
         // If a path is provided, use it; otherwise use current directory
         if let Some(project_path) = path {
@@ -672,9 +696,10 @@ pub async fn check_claude_version(app: AppHandle) -> Result<ClaudeVersionStatus,
 
     #[cfg(debug_assertions)]
     {
-        let output = std::process::Command::new(claude_path)
-            .arg("--version")
-            .output();
+        let mut cmd = std::process::Command::new(&claude_path);
+        apply_no_window_std(&mut cmd);
+        cmd.arg("--version");
+        let output = cmd.output();
 
         match output {
             Ok(output) => {
@@ -1075,9 +1100,9 @@ pub async fn cancel_claude_execution(
                     if let Some(pid) = pid {
                         log::info!("Attempting system kill as last resort for PID: {}", pid);
                         let kill_result = if cfg!(target_os = "windows") {
-                            std::process::Command::new("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .output()
+                            let mut cmd = std::process::Command::new("taskkill");
+                            apply_no_window_std(&mut cmd);
+                            cmd.args(["/F", "/PID", &pid.to_string()]).output()
                         } else {
                             std::process::Command::new("kill")
                                 .args(["-KILL", &pid.to_string()])
@@ -2134,6 +2159,7 @@ pub async fn validate_hook_command(command: String) -> Result<serde_json::Value,
 
     // Validate syntax without executing
     let mut cmd = std::process::Command::new("bash");
+    apply_no_window_std(&mut cmd);
     cmd.arg("-n") // Syntax check only
        .arg("-c")
        .arg(&command);
