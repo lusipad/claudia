@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   Terminal, 
   User, 
@@ -45,18 +45,36 @@ interface StreamMessageProps {
   className?: string;
   streamMessages: ClaudeStreamMessage[];
   onLinkDetected?: (url: string) => void;
+  fontScale?: number;
 }
 
 /**
  * Component to render a single Claude Code stream message
  */
-const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, className, streamMessages, onLinkDetected }) => {
+const StreamMessageComponent: React.FC<StreamMessageProps> = ({
+  message,
+  className,
+  streamMessages,
+  onLinkDetected,
+  fontScale = 1,
+}) => {
   // State to track tool results mapped by tool call ID
   const [toolResults, setToolResults] = useState<Map<string, any>>(new Map());
   
   // Get current theme
   const { theme } = useTheme();
   const syntaxTheme = getClaudeSyntaxTheme(theme);
+
+  const scaleStyle = useMemo(
+    () => ({ '--chat-font-scale': fontScale } as React.CSSProperties),
+    [fontScale]
+  );
+
+  const wrapContent = (content: React.ReactNode) => (
+    <div className="chat-font-scale" style={scaleStyle}>
+      {content}
+    </div>
+  );
   
   // Extract all tool results from stream messages
   useEffect(() => {
@@ -90,7 +108,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
 
     // Handle summary messages
     if (message.leafUuid && message.summary && (message as any).type === "summary") {
-      return <SummaryWidget summary={message.summary} leafUuid={message.leafUuid} />;
+      return wrapContent(<SummaryWidget summary={message.summary} leafUuid={message.leafUuid} />);
     }
 
     // System initialization message (debug-only; hide in normal UI)
@@ -131,6 +149,10 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
                                   style={syntaxTheme}
                                   language={match[1]}
                                   PreTag="div"
+                                  customStyle={{
+                                    fontSize: 'calc(var(--chat-font-scale, 1) * 1rem)',
+                                    lineHeight: 'calc(1.6 * var(--chat-font-scale, 1))',
+                                  }}
                                   {...props}
                                 >
                                   {String(children).replace(/\n$/, '')}
@@ -304,7 +326,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
       );
       
       if (!renderedSomething) return null;
-      return renderedCard;
+      return wrapContent(renderedCard);
     }
 
     // User message - handle both nested and direct content structures
@@ -624,7 +646,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
         </Card>
       );
       if (!renderedSomething) return null;
-      return renderedCard;
+      return wrapContent(renderedCard);
     }
 
     // Result message - render with markdown
@@ -636,7 +658,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
         return null;
       }
 
-      return (
+      return wrapContent(
         <Card className={cn(
           isError ? "border-destructive/20 bg-destructive/5" : "border-green-500/20 bg-green-500/5",
           className
@@ -665,6 +687,10 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({ message, classNa
                               style={syntaxTheme}
                               language={match[1]}
                               PreTag="div"
+                              customStyle={{
+                                fontSize: 'calc(var(--chat-font-scale, 1) * 1rem)',
+                                lineHeight: 'calc(1.6 * var(--chat-font-scale, 1))',
+                              }}
                               {...props}
                             >
                               {String(children).replace(/\n$/, '')}

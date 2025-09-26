@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
+import {
   Copy,
   ChevronDown,
   GitBranch,
   ChevronUp,
   X,
   Hash,
-  Wrench
+  Wrench,
+  ListTree,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +34,25 @@ import type { ClaudeStreamMessage } from "./AgentExecution";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTrackEvent, useComponentMetrics, useWorkflowTracking } from "@/hooks";
 import { SessionPersistenceService } from "@/services/sessionPersistence";
+
+const TIMELINE_PANEL_WIDTH = 384;
+const OUTLINE_PANEL_WIDTH = 320;
+const CHAT_ZOOM_STORAGE_KEY = "chat_zoom_factor";
+const CHAT_ZOOM_MIN = 0.75;
+const CHAT_ZOOM_MAX = 1.5;
+const CHAT_ZOOM_STEP = 0.05;
+const DEFAULT_CHAT_ZOOM = 1;
+
+const clampZoom = (value: number) =>
+  Math.min(CHAT_ZOOM_MAX, Math.max(CHAT_ZOOM_MIN, Number.isFinite(value) ? value : DEFAULT_CHAT_ZOOM));
+
+type OutlineItem = {
+  id: string;
+  label: string;
+  level: number;
+  displayIndex: number;
+  originalIndex: number;
+};
 
 interface ClaudeCodeSessionProps {
   /**
@@ -94,7 +116,12 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const [showSlashCommandsSettings, setShowSlashCommandsSettings] = useState(false);
   const [forkCheckpointId, setForkCheckpointId] = useState<string | null>(null);
   const [forkSessionName, setForkSessionName] = useState("");
-  
+  const [showOutline, setShowOutline] = useState(false);
+  const [hideToolMessages, setHideToolMessages] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [chatZoom, setChatZoom] = useState(DEFAULT_CHAT_ZOOM);
+  const [isZoomPopoverOpen, setIsZoomPopoverOpen] = useState(false);
+
   // Queued prompts state
   const [queuedPrompts, setQueuedPrompts] = useState<Array<{ id: string; prompt: string; model: "sonnet" | "opus" }>>([]);
   
@@ -116,6 +143,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const isMountedRef = useRef(true);
   const isListeningRef = useRef(false);
   const sessionStartTime = useRef<number>(Date.now());
+  const zoomPersistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Session metrics state for enhanced analytics
   const sessionMetrics = useRef({
@@ -153,6 +181,73 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     queuedPromptsRef.current = queuedPrompts;
   }, [queuedPrompts]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadZoomPreference = async () => {
+      let loaded: number | null = null;
+
+      if (typeof window !== 'undefined') {
+        const localValue = window.localStorage.getItem(CHAT_ZOOM_STORAGE_KEY);
+        if (localValue) {
+          const parsedLocal = clampZoom(parseFloat(localValue));
+          if (!Number.isNaN(parsedLocal)) {
+            loaded = parsedLocal;
+          }
+        }
+      }
+
+      try {
+        const stored = await api.getSetting(CHAT_ZOOM_STORAGE_KEY);
+        if (stored) {
+          const parsedStored = clampZoom(parseFloat(stored));
+          if (!Number.isNaN(parsedStored)) {
+            loaded = parsedStored;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load chat zoom preference:', error);
+      }
+
+      if (!cancelled && loaded !== null) {
+        setChatZoom(loaded);
+      }
+    };
+
+    loadZoomPreference();
+
+    return () => {
+      cancelled = true;
+      if (zoomPersistTimeoutRef.current) {
+        clearTimeout(zoomPersistTimeoutRef.current);
+        zoomPersistTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const mql = window.matchMedia('(min-width: 640px)');
+    const update = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsDesktop(event.matches);
+    };
+    update(mql);
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update);
+      return () => mql.removeEventListener('change', update);
+    } else {
+      // Safari fallback
+      // @ts-ignore
+      mql.addListener(update);
+      return () => {
+        // @ts-ignore
+        mql.removeListener(update);
+      };
+    }
+  }, []);
+
   // Get effective session info (from prop or extracted) - use useMemo to ensure it updates
   const effectiveSession = useMemo(() => {
     if (session) return session;
@@ -167,16 +262,36 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     return null;
   }, [session, extractedSessionInfo, projectPath]);
 
-  // Filter out messages that shouldn't be displayed
-  const displayableMessages = useMemo(() => {
-    return messages.filter((message, index) => {
-      // Skip meta messages that don't have meaningful content
+  const displayableEntries = useMemo(() => {
+    const entries: Array<{ message: ClaudeStreamMessage; originalIndex: number }> = [];
+
+    const isToolInvocationOnly = (message: ClaudeStreamMessage) => {
+      if (message.type !== 'assistant' || !message.message?.content) {
+        return false;
+      }
+      const contents = Array.isArray(message.message.content)
+        ? message.message.content
+        : [message.message.content];
+      if (contents.length === 0) return false;
+      return contents.every((content: any) => {
+        if (content.type === 'tool_use') return true;
+        if (content.type === 'thinking') return true;
+        if (content.type === 'text') {
+          const textValue = typeof content.text === 'string'
+            ? content.text
+            : content.text?.text ?? '';
+          return textValue.trim().length === 0;
+        }
+        return false;
+      });
+    };
+
+    const shouldDisplay = (message: ClaudeStreamMessage, index: number) => {
       if (message.isMeta && !message.leafUuid && !message.summary) {
         return false;
       }
 
-      // Skip user messages that only contain tool results that are already displayed
-      if (message.type === "user" && message.message) {
+      if (message.type === 'user' && message.message) {
         if (message.isMeta) return false;
 
         const msg = message.message;
@@ -187,24 +302,21 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         if (Array.isArray(msg.content)) {
           let hasVisibleContent = false;
           for (const content of msg.content) {
-            if (content.type === "text") {
+            if (content.type === 'text') {
               hasVisibleContent = true;
               break;
             }
-            if (content.type === "tool_result") {
+            if (content.type === 'tool_result') {
               let willBeSkipped = false;
               if (content.tool_use_id) {
-                // Look for the matching tool_use in previous assistant messages
                 for (let i = index - 1; i >= 0; i--) {
                   const prevMsg = messages[i];
                   if (prevMsg.type === 'assistant' && prevMsg.message?.content && Array.isArray(prevMsg.message.content)) {
-                    const toolUse = prevMsg.message.content.find((c: any) => 
-                      c.type === 'tool_use' && c.id === content.tool_use_id
-                    );
+                    const toolUse = prevMsg.message.content.find((c: any) => c.type === 'tool_use' && c.id === content.tool_use_id);
                     if (toolUse) {
                       const toolName = toolUse.name?.toLowerCase();
                       const toolsWithWidgets = [
-                        'task', 'edit', 'multiedit', 'todowrite', 'ls', 'read', 
+                        'task', 'edit', 'multiedit', 'todowrite', 'ls', 'read',
                         'glob', 'bash', 'write', 'grep'
                       ];
                       if (toolsWithWidgets.includes(toolName) || toolUse.name?.startsWith('mcp__')) {
@@ -226,16 +338,111 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           }
         }
       }
+
+      if (hideToolMessages && isToolInvocationOnly(message)) {
+        return false;
+      }
+
       return true;
+    };
+
+    messages.forEach((message, index) => {
+      if (shouldDisplay(message, index)) {
+        entries.push({ message, originalIndex: index });
+      }
     });
-  }, [messages]);
+
+    return entries;
+  }, [messages, hideToolMessages]);
+
+  const outlineItems = useMemo<OutlineItem[]>(() => {
+    const items: OutlineItem[] = [];
+
+    displayableEntries.forEach((entry, displayIndex) => {
+      const { message, originalIndex } = entry;
+      if (message.type !== 'assistant' || !message.message?.content) {
+        return;
+      }
+
+      const contents = Array.isArray(message.message.content)
+        ? message.message.content
+        : [message.message.content];
+
+      const textBlocks = contents
+        .filter((content: any) => content.type === 'text')
+        .map((content: any) => {
+          if (typeof content.text === 'string') return content.text;
+          if (content.text?.text) return content.text.text;
+          return '';
+        })
+        .filter(Boolean);
+
+      if (textBlocks.length === 0) {
+        return;
+      }
+
+      const combined = textBlocks.join('\n');
+      const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+      let match: RegExpExecArray | null;
+      let headingCount = 0;
+      while ((match = headingRegex.exec(combined)) !== null) {
+        headingCount += 1;
+        const level = Math.min(match[1].length, 6);
+        const rawLabel = match[2].trim();
+        const label = rawLabel.replace(/[#*`_>\-]/g, '').replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1').trim();
+        items.push({
+          id: `outline-${displayIndex}-${headingCount}`,
+          label: label || `Heading ${headingCount}`,
+          level,
+          displayIndex,
+          originalIndex,
+        });
+      }
+
+      if (headingCount === 0) {
+        const fallback = combined.trim().split('\n')[0] || '';
+        const label = fallback.substring(0, 80) || `Assistant message ${displayIndex + 1}`;
+        items.push({
+          id: `outline-${displayIndex}-fallback`,
+          label,
+          level: 1,
+          displayIndex,
+          originalIndex,
+        });
+      }
+    });
+
+    return items;
+  }, [displayableEntries]);
+
+  useEffect(() => {
+    if (showOutline && outlineItems.length === 0) {
+      setShowOutline(false);
+    }
+  }, [outlineItems.length, showOutline]);
+
+  const rightOffset = (showTimeline ? TIMELINE_PANEL_WIDTH : 0) + (showOutline ? OUTLINE_PANEL_WIDTH : 0);
+  const zoomPercent = Math.round(chatZoom * 100);
+  const canIncreaseZoom = chatZoom < CHAT_ZOOM_MAX - 0.001;
+  const canDecreaseZoom = chatZoom > CHAT_ZOOM_MIN + 0.001;
+  const isZoomDefault = Math.abs(chatZoom - DEFAULT_CHAT_ZOOM) < 0.001;
 
   const rowVirtualizer = useVirtualizer({
-    count: displayableMessages.length,
+    count: displayableEntries.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 150, // Estimate, will be dynamically measured
+    estimateSize: () => 150 * chatZoom,
     overscan: 5,
+    getItemKey: (index) => {
+      const entry = displayableEntries[index];
+      return entry ? `${entry.originalIndex}-${hideToolMessages ? 'hide' : 'show'}` : index;
+    },
   });
+
+  useEffect(() => {
+    if (typeof rowVirtualizer.measure === 'function') {
+      rowVirtualizer.measure();
+    }
+  }, [chatZoom, rowVirtualizer]);
 
   // Debug logging
   useEffect(() => {
@@ -275,10 +482,10 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (displayableMessages.length > 0) {
-      rowVirtualizer.scrollToIndex(displayableMessages.length - 1, { align: 'end', behavior: 'smooth' });
+    if (displayableEntries.length > 0) {
+      rowVirtualizer.scrollToIndex(displayableEntries.length - 1, { align: 'end', behavior: 'smooth' });
     }
-  }, [displayableMessages.length, rowVirtualizer]);
+  }, [displayableEntries.length, rowVirtualizer]);
 
   // Calculate total tokens from messages
   useEffect(() => {
@@ -1007,6 +1214,65 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     sessionMetrics.current.checkpointCount += 1;
   };
 
+  const handleOutlineNavigate = (displayIndex: number) => {
+    rowVirtualizer.scrollToIndex(displayIndex, { align: 'start', behavior: 'smooth' });
+    if (!isDesktop) {
+      setShowOutline(false);
+    }
+  };
+
+  const persistChatZoom = (value: number) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CHAT_ZOOM_STORAGE_KEY, value.toString());
+    }
+    if (zoomPersistTimeoutRef.current) {
+      clearTimeout(zoomPersistTimeoutRef.current);
+    }
+    zoomPersistTimeoutRef.current = setTimeout(() => {
+      api.saveSetting(CHAT_ZOOM_STORAGE_KEY, value.toString()).catch((error) => {
+        console.warn('Failed to persist chat zoom preference:', error);
+      });
+    }, 300);
+  };
+
+  const applyZoom = (value: number) => {
+    const clamped = clampZoom(value);
+    setChatZoom(clamped);
+    persistChatZoom(clamped);
+  };
+
+  const increaseZoom = () => applyZoom(chatZoom + CHAT_ZOOM_STEP);
+  const decreaseZoom = () => applyZoom(chatZoom - CHAT_ZOOM_STEP);
+  const resetZoom = () => applyZoom(DEFAULT_CHAT_ZOOM);
+  const handleZoomSliderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const parsed = parseFloat(event.target.value);
+    if (!Number.isNaN(parsed)) {
+      applyZoom(parsed);
+    }
+  };
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const modKey = isMac ? event.metaKey : event.ctrlKey;
+      if (!modKey) return;
+
+      if (event.key === '=' || event.key === '+') {
+        event.preventDefault();
+        increaseZoom();
+      } else if (event.key === '-') {
+        event.preventDefault();
+        decreaseZoom();
+      } else if (event.key === '0') {
+        event.preventDefault();
+        resetZoom();
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [increaseZoom, decreaseZoom, resetZoom]);
+
   const handleCancelExecution = async () => {
     if (!claudeSessionId || !isLoading) return;
     
@@ -1241,6 +1507,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       className="flex-1 overflow-y-auto relative pb-40"
       style={{
         contain: 'strict',
+        zoom: chatZoom,
       }}
     >
       <div
@@ -1252,7 +1519,9 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       >
         <AnimatePresence>
           {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-            const message = displayableMessages[virtualItem.index];
+            const entry = displayableEntries[virtualItem.index];
+            const message = entry?.message;
+            if (!message) return null;
             return (
               <motion.div
                 key={virtualItem.key}
@@ -1271,6 +1540,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   message={message} 
                   streamMessages={messages}
                   onLinkDetected={handleLinkDetected}
+                  fontScale={chatZoom}
                 />
               </motion.div>
             );
@@ -1336,10 +1606,10 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         <div className="w-full h-full flex flex-col">
 
         {/* Main Content Area */}
-        <div className={cn(
-          "flex-1 overflow-hidden transition-all duration-300",
-          showTimeline && "sm:mr-96"
-        )}>
+        <div
+          className="flex-1 overflow-hidden transition-all duration-300"
+          style={isDesktop && rightOffset ? { marginRight: rightOffset } : undefined}
+        >
           {showPreview ? (
             // Split pane layout when preview is active
             <SplitPane
@@ -1450,7 +1720,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           </AnimatePresence>
 
           {/* Navigation Arrows - positioned above prompt bar with spacing */}
-          {displayableMessages.length > 5 && (
+          {displayableEntries.length > 5 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1469,7 +1739,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       size="sm"
                       onClick={() => {
                       // Use virtualizer to scroll to the first item
-                      if (displayableMessages.length > 0) {
+                      if (displayableEntries.length > 0) {
                         // Scroll to top of the container
                         parentRef.current?.scrollTo({
                           top: 0,
@@ -1507,7 +1777,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       size="sm"
                       onClick={() => {
                       // Use virtualizer to scroll to the last item
-                      if (displayableMessages.length > 0) {
+                      if (displayableEntries.length > 0) {
                         // Scroll to bottom of the container
                         const scrollElement = parentRef.current;
                         if (scrollElement) {
@@ -1528,10 +1798,10 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             </motion.div>
           )}
 
-          <div className={cn(
-            "fixed bottom-0 left-0 right-0 transition-all duration-300 z-50",
-            showTimeline && "sm:right-96"
-          )}>
+          <div
+            className="fixed bottom-0 left-0 right-0 transition-all duration-300 z-50"
+            style={isDesktop && rightOffset ? { right: rightOffset } : undefined}
+          >
             <FloatingPromptInput
               ref={floatingPromptRef}
               onSend={handleSendPrompt}
@@ -1550,7 +1820,12 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setShowTimeline(!showTimeline)}
+                          onClick={() => {
+                            if (!isDesktop && !showTimeline) {
+                              setShowOutline(false);
+                            }
+                            setShowTimeline(!showTimeline);
+                          }}
                           className="h-9 w-9 text-muted-foreground hover:text-foreground"
                         >
                           <GitBranch className={cn("h-3.5 w-3.5", showTimeline && "text-primary")} />
@@ -1558,6 +1833,117 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       </motion.div>
                     </TooltipSimple>
                   )}
+                  <Popover
+                    open={isZoomPopoverOpen}
+                    onOpenChange={setIsZoomPopoverOpen}
+                    side="top"
+                    align="end"
+                    trigger={
+                      <TooltipSimple content="Adjust chat zoom" side="top">
+                        <motion.div
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                          >
+                            <span className="text-xs font-semibold">A</span>
+                          </Button>
+                        </motion.div>
+                      </TooltipSimple>
+                    }
+                    content={
+                      <div className="w-48 p-3 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            onClick={decreaseZoom}
+                            disabled={!canDecreaseZoom}
+                          >
+                            A-
+                          </Button>
+                          <span className="text-sm font-medium">{zoomPercent}%</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            onClick={increaseZoom}
+                            disabled={!canIncreaseZoom}
+                          >
+                            A+
+                          </Button>
+                        </div>
+                        <input
+                          type="range"
+                          min={CHAT_ZOOM_MIN}
+                          max={CHAT_ZOOM_MAX}
+                          step={CHAT_ZOOM_STEP}
+                          value={chatZoom}
+                          onChange={handleZoomSliderChange}
+                          className="w-full accent-primary"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-center text-xs"
+                          onClick={() => {
+                            resetZoom();
+                            setIsZoomPopoverOpen(false);
+                          }}
+                          disabled={isZoomDefault}
+                        >
+                          Reset to 100%
+                        </Button>
+                      </div>
+                    }
+                  />
+                  <TooltipSimple content={showOutline ? "Hide outline" : outlineItems.length === 0 ? "No outline available" : "Show outline"} side="top">
+                    <motion.div
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (outlineItems.length === 0) return;
+                          if (!isDesktop && !showOutline) {
+                            setShowTimeline(false);
+                          }
+                          setShowOutline(!showOutline);
+                        }}
+                        className={cn(
+                          "h-9 w-9 text-muted-foreground hover:text-foreground",
+                          showOutline && "text-primary"
+                        )}
+                        disabled={outlineItems.length === 0}
+                      >
+                        <ListTree className="h-3.5 w-3.5" />
+                      </Button>
+                    </motion.div>
+                  </TooltipSimple>
+                  <TooltipSimple content={hideToolMessages ? "Show tool calls" : "Hide tool calls"} side="top">
+                    <motion.div
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setHideToolMessages((prev) => !prev)}
+                        className={cn(
+                          "h-9 w-9 text-muted-foreground hover:text-foreground",
+                          hideToolMessages && "text-primary"
+                        )}
+                      >
+                        {hideToolMessages ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      </Button>
+                    </motion.div>
+                  </TooltipSimple>
                   {messages.length > 0 && (
                     <Popover
                       trigger={
@@ -1645,6 +2031,51 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           )}
         </ErrorBoundary>
 
+        <AnimatePresence>
+          {showOutline && (
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="fixed top-0 h-full w-full sm:w-80 bg-background border-l border-border shadow-xl z-30 overflow-hidden"
+              style={{ right: isDesktop && showTimeline ? TIMELINE_PANEL_WIDTH : 0 }}
+            >
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between p-4 border-b border-border">
+                  <h3 className="text-lg font-semibold">Outline</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowOutline(false)}
+                    className="h-8 w-8"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                  {outlineItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No outline items yet. Generate headings in your conversation to populate this view.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {outlineItems.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleOutlineNavigate(item.displayIndex)}
+                          className="w-full text-left px-2 py-1 rounded-md hover:bg-accent text-sm transition-colors"
+                          style={{ paddingLeft: `${Math.min(item.level - 1, 5) * 12 + 8}px` }}
+                        >
+                          <span className="block truncate text-foreground">{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Timeline */}
         <AnimatePresence>
           {showTimeline && effectiveSession && (
@@ -1653,7 +2084,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l border-border shadow-xl z-30 overflow-hidden"
+              className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l border-border shadow-xl z-40 overflow-hidden"
             >
               <div className="h-full flex flex-col">
                 {/* Timeline Header */}
