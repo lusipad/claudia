@@ -109,6 +109,9 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
   
   // Hooks configuration state
   const [isHooksDialogOpen, setIsHooksDialogOpen] = useState(false);
+
+  // IME composition state
+  const isIMEComposingRef = useRef(false);
   const [activeHooksTab, setActiveHooksTab] = useState("project");
 
   // Execution stats
@@ -415,13 +418,13 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
 
       // Call the API to kill the agent session
       const success = await api.killAgentSession(runId);
-      
+
       if (success) {
         console.log(`Successfully stopped agent session ${runId}`);
       } else {
         console.warn(`Failed to stop agent session ${runId} - it may have already finished`);
       }
-      
+
       // Update UI state
       setIsRunning(false);
       setExecutionStartTime(null);
@@ -469,6 +472,16 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
         }
       }]);
     }
+  };
+
+  const handleCompositionStart = () => {
+    isIMEComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = () => {
+    setTimeout(() => {
+      isIMEComposingRef.current = false;
+    }, 0);
   };
 
   const handleBackWithConfirmation = () => {
@@ -709,11 +722,16 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
                   placeholder={t("agents.taskPlaceholder")}
                   disabled={isRunning}
                   className="flex-1 h-9"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === "Enter" && !isRunning && projectPath && task.trim()) {
+                      if (e.nativeEvent.isComposing || isIMEComposingRef.current) {
+                        return;
+                      }
                       handleExecute();
                     }
                   }}
+                  onCompositionStart={handleCompositionStart}
+                  onCompositionEnd={handleCompositionEnd}
                 />
                 <motion.div
                   whileTap={{ scale: 0.97 }}
