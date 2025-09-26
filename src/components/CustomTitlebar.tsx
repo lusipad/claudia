@@ -173,10 +173,6 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
         )}
 
         <div className="ml-auto flex items-center pr-5 gap-3 tauri-no-drag">
-          {controlsPosition === "right" && (
-            <div className="mr-3 flex items-center">{windowsWindowControls}</div>
-          )}
-
         {/* Primary actions group */}
         <div className="flex items-center gap-1">
           {onAgentsClick && (
@@ -283,8 +279,12 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             )}
           </div>
         </div>
+
+          {controlsPosition === "right" && (
+            <div className="flex items-center ml-3">{windowsWindowControls}</div>
+          )}
       </div>
-      </div>
+    </div>
     </TooltipProvider>
   );
 };

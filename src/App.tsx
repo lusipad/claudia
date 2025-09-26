@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { Bot, FolderCode } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -11,12 +11,8 @@ import { ProjectList } from "@/components/ProjectList";
 import { FilePicker } from "@/components/FilePicker";
 import { SessionList } from "@/components/SessionList";
 import { CustomTitlebar } from "@/components/CustomTitlebar";
-import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { ClaudeFileEditor } from "@/components/ClaudeFileEditor";
-import { Settings } from "@/components/Settings";
 import { CCAgents } from "@/components/CCAgents";
-import { UsageDashboard } from "@/components/UsageDashboard";
-import { MCPManager } from "@/components/MCPManager";
 import { NFOCredits } from "@/components/NFOCredits";
 import { ClaudeBinaryDialog } from "@/components/ClaudeBinaryDialog";
 import { Toast, ToastContainer } from "@/components/ui/toast";
@@ -26,6 +22,12 @@ import { TabContent } from "@/components/TabContent";
 import { useTabState } from "@/hooks/useTabState";
 import { useAppLifecycle, useTrackEvent } from "@/hooks";
 import { StartupIntro } from "@/components/StartupIntro";
+
+// Lazy imports to avoid dynamic import warnings
+const MarkdownEditor = lazy(() => import("@/components/MarkdownEditor").then(m => ({ default: m.MarkdownEditor })));
+const Settings = lazy(() => import("@/components/Settings").then(m => ({ default: m.Settings })));
+const UsageDashboard = lazy(() => import("@/components/UsageDashboard").then(m => ({ default: m.UsageDashboard })));
+const MCPManager = lazy(() => import("@/components/MCPManager").then(m => ({ default: m.MCPManager })));
 
 type View = 
   | "welcome" 
@@ -330,12 +332,18 @@ function AppContent() {
       case "editor":
         return (
           <div className="flex-1 overflow-hidden">
-            <MarkdownEditor onBack={() => handleViewChange("welcome")} />
+            <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+              <MarkdownEditor onBack={() => handleViewChange("welcome")} />
+            </Suspense>
           </div>
         );
-      
+
       case "settings":
-        return <Settings onBack={() => handleViewChange("welcome")} />;
+        return (
+          <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+            <Settings onBack={() => handleViewChange("welcome")} />
+          </Suspense>
+        );
       
       case "projects":
         if (selectedProject) {
@@ -376,12 +384,16 @@ function AppContent() {
       
       case "usage-dashboard":
         return (
-          <UsageDashboard onBack={() => handleViewChange("welcome")} />
+          <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+            <UsageDashboard onBack={() => handleViewChange("welcome")} />
+          </Suspense>
         );
-      
+
       case "mcp":
         return (
-          <MCPManager onBack={() => handleViewChange("welcome")} />
+          <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+            <MCPManager onBack={() => handleViewChange("welcome")} />
+          </Suspense>
         );
       
       case "project-settings":

@@ -1833,74 +1833,105 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       </motion.div>
                     </TooltipSimple>
                   )}
-                  <Popover
-                    open={isZoomPopoverOpen}
-                    onOpenChange={setIsZoomPopoverOpen}
-                    side="top"
-                    align="end"
-                    trigger={
-                      <TooltipSimple content="Adjust chat zoom" side="top">
-                        <motion.div
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ duration: 0.15 }}
-                        >
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                          >
-                            <span className="text-xs font-semibold">A</span>
-                          </Button>
-                        </motion.div>
-                      </TooltipSimple>
-                    }
-                    content={
-                      <div className="w-48 p-3 space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="px-2"
-                            onClick={decreaseZoom}
-                            disabled={!canDecreaseZoom}
-                          >
-                            A-
-                          </Button>
-                          <span className="text-sm font-medium">{zoomPercent}%</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="px-2"
-                            onClick={increaseZoom}
-                            disabled={!canIncreaseZoom}
-                          >
-                            A+
-                          </Button>
-                        </div>
-                        <input
-                          type="range"
-                          min={CHAT_ZOOM_MIN}
-                          max={CHAT_ZOOM_MAX}
-                          step={CHAT_ZOOM_STEP}
-                          value={chatZoom}
-                          onChange={handleZoomSliderChange}
-                          className="w-full accent-primary"
-                        />
+                  <>
+                    <TooltipSimple content="Adjust chat zoom" side="top">
+                      <motion.div
+                        whileTap={{ scale: 0.97 }}
+                        transition={{ duration: 0.15 }}
+                      >
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="w-full justify-center text-xs"
-                          onClick={() => {
-                            resetZoom();
-                            setIsZoomPopoverOpen(false);
-                          }}
-                          disabled={isZoomDefault}
+                          size="icon"
+                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                          onClick={() => setIsZoomPopoverOpen(true)}
                         >
-                          Reset to 100%
+                          <span className="text-xs font-semibold">A</span>
                         </Button>
-                      </div>
-                    }
-                  />
+                      </motion.div>
+                    </TooltipSimple>
+
+                    <Dialog open={isZoomPopoverOpen} onOpenChange={setIsZoomPopoverOpen}>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>调整字体大小</DialogTitle>
+                          <DialogDescription>
+                            调整聊天界面的字体大小，范围从 75% 到 150%
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-6 py-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-20"
+                              onClick={decreaseZoom}
+                              disabled={!canDecreaseZoom}
+                            >
+                              A-
+                            </Button>
+                            <div className="text-center">
+                              <span className="text-2xl font-bold">{zoomPercent}%</span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-20"
+                              onClick={increaseZoom}
+                              disabled={!canIncreaseZoom}
+                            >
+                              A+
+                            </Button>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="zoom-slider">滑动调节</Label>
+                            <input
+                              id="zoom-slider"
+                              type="range"
+                              min={CHAT_ZOOM_MIN}
+                              max={CHAT_ZOOM_MAX}
+                              step={CHAT_ZOOM_STEP}
+                              value={chatZoom}
+                              onChange={handleZoomSliderChange}
+                              className="w-full accent-primary"
+                            />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>75%</span>
+                              <span>100%</span>
+                              <span>150%</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>预览</Label>
+                            <div
+                              className="p-4 border rounded-lg bg-muted/50"
+                              style={{ fontSize: `${chatZoom}rem` }}
+                            >
+                              <p className="text-sm">这是预览文本</p>
+                              <p className="text-xs text-muted-foreground">调整后的字体效果</p>
+                            </div>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              resetZoom();
+                            }}
+                            disabled={isZoomDefault}
+                          >
+                            重置为默认
+                          </Button>
+                          <Button
+                            onClick={() => setIsZoomPopoverOpen(false)}
+                          >
+                            确定
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>
                   <TooltipSimple content={showOutline ? "Hide outline" : outlineItems.length === 0 ? "No outline available" : "Show outline"} side="top">
                     <motion.div
                       whileTap={{ scale: 0.97 }}
