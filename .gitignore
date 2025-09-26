@@ -36,4 +36,5 @@ CLAUDE.md
 .claude/
 
 .env
-nulopcode-win-x64.exe
+nul
+opcode-win-x64.exe

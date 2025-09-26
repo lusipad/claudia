@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { 
+import {
   Plus, 
   Edit, 
   Trash2, 
@@ -13,7 +13,8 @@ import {
   Upload,
   Globe,
   FileJson,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -36,8 +37,8 @@ import { save, open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import { Toast, ToastContainer } from "@/components/ui/toast";
-import { CreateAgent } from "./CreateAgent";
-import { AgentExecution } from "./AgentExecution";
+const CreateAgent = React.lazy(() => import("./CreateAgent").then(m => ({ default: m.CreateAgent })));
+const AgentExecution = React.lazy(() => import("./AgentExecution").then(m => ({ default: m.AgentExecution })));
 import { AgentRunsList } from "./AgentRunsList";
 import { GitHubAgentBrowser } from "./GitHubAgentBrowser";
 import { ICON_MAP } from "./IconPicker";
@@ -268,32 +269,56 @@ export const CCAgents: React.FC<CCAgentsProps> = ({ onBack, className }) => {
 
   if (view === "create") {
     return (
-      <CreateAgent
-        onBack={() => setView("list")}
-        onAgentCreated={handleAgentCreated}
-      />
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        }
+      >
+        <CreateAgent
+          onBack={() => setView("list")}
+          onAgentCreated={handleAgentCreated}
+        />
+      </Suspense>
     );
   }
 
   if (view === "edit" && selectedAgent) {
     return (
-      <CreateAgent
-        agent={selectedAgent}
-        onBack={() => setView("list")}
-        onAgentCreated={handleAgentUpdated}
-      />
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        }
+      >
+        <CreateAgent
+          agent={selectedAgent}
+          onBack={() => setView("list")}
+          onAgentCreated={handleAgentUpdated}
+        />
+      </Suspense>
     );
   }
 
   if (view === "execute" && selectedAgent) {
     return (
-      <AgentExecution
-        agent={selectedAgent}
-        onBack={() => {
-          setView("list");
-          handleExecutionComplete();
-        }}
-      />
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        }
+      >
+        <AgentExecution
+          agent={selectedAgent}
+          onBack={() => {
+            setView("list");
+            handleExecutionComplete();
+          }}
+        />
+      </Suspense>
     );
   }
 

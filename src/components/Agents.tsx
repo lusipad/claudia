@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Play, Clock, CheckCircle, XCircle, Trash2, Import, ChevronDown, ChevronRight, FileJson, Globe, Download, Plus, History, Edit } from 'lucide-react';
@@ -17,7 +17,7 @@ import { api, type Agent, type AgentRunWithMetrics } from '@/lib/api';
 import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { GitHubAgentBrowser } from '@/components/GitHubAgentBrowser';
-import { CreateAgent } from '@/components/CreateAgent';
+const CreateAgent = React.lazy(() => import('@/components/CreateAgent').then(m => ({ default: m.CreateAgent })));
 import { useTabState } from '@/hooks/useTabState';
 
 export const Agents: React.FC = () => {
@@ -177,27 +177,38 @@ export const Agents: React.FC = () => {
   // Show CreateAgent component if creating
   if (showCreateAgent) {
     return (
-      <CreateAgent 
-        onBack={() => setShowCreateAgent(false)}
-        onAgentCreated={() => {
-          setShowCreateAgent(false);
-          loadAgents(); // Reload agents after creation
-        }}
-      />
+      <Suspense fallback={
+        <div className="h-full flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }>
+        <CreateAgent
+          onBack={() => setShowCreateAgent(false)}
+          onAgentCreated={() => {
+            setShowCreateAgent(false);
+            loadAgents();
+          }}
+        />
+      </Suspense>
     );
   }
 
-  // Show CreateAgent component in edit mode
   if (editingAgent) {
     return (
-      <CreateAgent
-        agent={editingAgent}
-        onBack={() => setEditingAgent(null)}
-        onAgentCreated={() => {
-          setEditingAgent(null);
-          loadAgents(); // Reload agents after update
-        }}
-      />
+      <Suspense fallback={
+        <div className="h-full flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }>
+        <CreateAgent
+          agent={editingAgent}
+          onBack={() => setEditingAgent(null)}
+          onAgentCreated={() => {
+            setEditingAgent(null);
+            loadAgents();
+          }}
+        />
+      </Suspense>
     );
   }
 
