@@ -49,7 +49,13 @@ jobs:
           mkdir -p dist/linux-x86_64
           cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb dist/linux-x86_64/ || true
           cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage dist/linux-x86_64/ || true
-          
+
+          # Check if any files were copied
+          if [ ! "$(ls -A dist/linux-x86_64)" ]; then
+            echo "No build artifacts found!"
+            exit 1
+          fi
+
           # Generate checksums
           cd dist/linux-x86_64
           sha256sum * > checksums.txt

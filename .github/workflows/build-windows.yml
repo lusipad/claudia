@@ -27,8 +27,11 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
+      - name: Install Node.js dependencies
         run: bun install
+
+      - name: Build frontend
+        run: bun run build
 
       - name: Build Tauri app
         run: bun run tauri build --target x86_64-pc-windows-msvc
@@ -44,6 +47,13 @@ jobs:
           }
           if (Test-Path "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*.exe") {
             Copy-Item "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*.exe" "dist\windows-x86_64\"
+          }
+
+          # Check if any files were copied
+          $fileCount = (Get-ChildItem "dist\windows-x86_64" -File).Count
+          if ($fileCount -eq 0) {
+            Write-Error "No build artifacts found!"
+            exit 1
           }
 
           # Generate checksums
