@@ -420,6 +420,8 @@ export const en = {
     modelSonnetDesc: "Faster, efficient for most tasks",
     modelOpus: "Claude 4 Opus",
     modelOpusDesc: "More capable, better for complex tasks",
+    modelPlan: "Plan Mode (opusplan)",
+    modelPlanDesc: "Strategic planning and step-by-step analysis",
 
     // Additional agent keys for basic agents page
     agentsCount: "Agents",
@@ -668,6 +670,11 @@ export const en = {
     failedToForkCheckpoint: "Failed to fork checkpoint",
     loadingHistory: "Loading session history...",
     initializingClaude: "Initializing Claude Code...",
+    usingThinkingModePrefix: "Using",
+    usingThinkingModeSuffix: "mode - this may take longer than usual...",
+    processingWithModePrefix: "Processing with",
+    processingWithModeSuffix: "mode…",
+    thinkingModeTakesLonger: "(this may take longer)",
     validating: "Validating...",
     saveSelection: "Save Selection",
     noInstallationsFound: "No Installations Found",

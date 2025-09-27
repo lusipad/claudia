@@ -1,0 +1,136 @@
+name: Hotfix Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      hotfix_branch:
+        description: 'Hotfix branch name'
+        required: true
+        type: string
+      version:
+        description: 'Hotfix version (e.g., 1.0.1)'
+        required: true
+        type: string
+      description:
+        description: 'Brief description of the hotfix'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  hotfix-release:
+    name: Create Hotfix Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create hotfix branch
+        run: |
+          git checkout -b "${{ inputs.hotfix_branch }}"
+
+      - name: Update version files
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          # Update package.json
+          bun run --silent -e "
+            const pkg = require('./package.json');
+            pkg.version = '$VERSION';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+          # Update tauri.conf.json
+          bun run --silent -e "
+            const config = require('./src-tauri/tauri.conf.json');
+            config.version = '$VERSION';
+            require('fs').writeFileSync('./src-tauri/tauri.conf.json', JSON.stringify(config, null, 2) + '\n');
+          "
+
+      - name: Update changelog
+        run: |
+          VERSION="${{ inputs.version }}"
+          DESCRIPTION="${{ inputs.description }}"
+
+          # Create hotfix changelog entry
+          cat > temp_changelog.md << EOF
+          ## [$VERSION] - $(date +%Y-%m-%d) [HOTFIX]
+
+          ### Fixed
+          - $DESCRIPTION
+
+          EOF
+
+          # Prepend to existing CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            cat CHANGELOG.md >> temp_changelog.md
+          fi
+
+          mv temp_changelog.md CHANGELOG.md
+
+      - name: Commit changes
+        run: |
+          git add .
+          git commit -m "hotfix: ${{ inputs.description }} (v${{ inputs.version }})"
+
+      - name: Push hotfix branch
+        run: |
+          git push origin "${{ inputs.hotfix_branch }}"
+
+      - name: Create Pull Request
+        run: |
+          gh pr create \
+            --title "🚨 Hotfix: ${{ inputs.description }} (v${{ inputs.version }})" \
+            --body "## Hotfix Release v${{ inputs.version }}
+
+          **Description:** ${{ inputs.description }}
+
+          ### Changes
+          - Updates version to ${{ inputs.version }}
+          - Adds changelog entry for hotfix
+
+          ### Testing
+          - [ ] Manual testing completed
+          - [ ] Critical path verified
+          - [ ] No regression issues found
+
+          ### Release Process
+          1. Review and approve this PR
+          2. Merge to main
+          3. Tag will be created automatically
+          4. Release will be built and published
+
+          **Priority:** 🔥 High - Hotfix Release" \
+            --head "${{ inputs.hotfix_branch }}" \
+            --base main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "🚨 Hotfix release workflow completed!"
+          echo "🌟 Version: ${{ inputs.version }}"
+          echo "📝 Description: ${{ inputs.description }}"
+          echo "🔗 Branch: ${{ inputs.hotfix_branch }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Review the created pull request"
+          echo "2. Merge when ready"
+          echo "3. Release will be automatically triggered"

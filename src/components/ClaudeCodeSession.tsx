@@ -21,7 +21,7 @@ import { api, type Session } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { StreamMessage } from "./StreamMessage";
-import { FloatingPromptInput, type FloatingPromptInputRef } from "./FloatingPromptInput";
+import { FloatingPromptInput, type FloatingPromptInputRef, type ThinkingMode } from "./FloatingPromptInput";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TimelineNavigator } from "./TimelineNavigator";
 import { CheckpointSettings } from "./CheckpointSettings";
@@ -57,6 +57,14 @@ type OutlineItem = {
 type DisplayableEntry = {
   message: ClaudeStreamMessage;
   originalIndex: number;
+};
+
+type QueuedPrompt = {
+  id: string;
+  prompt: string;
+  model: "sonnet" | "opus" | "opusplan";
+  displayPrompt?: string;
+  thinkingMode?: ThinkingMode;
 };
 
 const TOOLS_WITH_WIDGETS = [
@@ -281,6 +289,76 @@ const buildOutlineItems = (entries: DisplayableEntry[]): OutlineItem[] => {
   return items;
 };
 
+const toContentArray = (content: any): any[] => {
+  if (!content) {
+    return [];
+  }
+
+  return Array.isArray(content) ? content : [content];
+};
+
+type ToolUseEntry = {
+  id: string;
+  name: string;
+};
+
+const extractToolUseEntries = (message: ClaudeStreamMessage): ToolUseEntry[] => {
+  const entries: ToolUseEntry[] = [];
+  const msgContent = (message as any)?.message?.content;
+
+  toContentArray(msgContent).forEach((content: any) => {
+    if (content && content.type === 'tool_use' && typeof content.id === 'string') {
+      const rawName = content.name || content.display_name || content.tool_name;
+      entries.push({
+        id: content.id,
+        name: typeof rawName === 'string' && rawName.trim().length > 0 ? rawName : 'tool',
+      });
+    }
+  });
+
+  const toolCalls = (message as any)?.tool_calls;
+  if (Array.isArray(toolCalls)) {
+    toolCalls.forEach((call: any) => {
+      if (call && typeof call.id === 'string') {
+        const rawName = call.name || call.tool_name;
+        entries.push({
+          id: call.id,
+          name: typeof rawName === 'string' && rawName.trim().length > 0 ? rawName : 'tool',
+        });
+      }
+    });
+  }
+
+  return entries;
+};
+
+const extractToolResultIds = (message: ClaudeStreamMessage): string[] => {
+  const ids: string[] = [];
+  const msgContent = (message as any)?.message?.content;
+
+  toContentArray(msgContent).forEach((content: any) => {
+    if (content && content.type === 'tool_result') {
+      if (typeof content.tool_use_id === 'string') {
+        ids.push(content.tool_use_id);
+      } else if (typeof content.id === 'string') {
+        ids.push(content.id);
+      }
+    }
+  });
+
+  const toolResults = (message as any)?.tool_results;
+  if (Array.isArray(toolResults)) {
+    toolResults.forEach((result: any) => {
+      const id = result?.tool_use_id ?? result?.id;
+      if (typeof id === 'string') {
+        ids.push(id);
+      }
+    });
+  }
+
+  return ids;
+};
+
 interface ClaudeCodeSessionProps {
   /**
    * Optional session to resume (when clicking from SessionList)
@@ -329,6 +407,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const [projectPath] = useState(initialProjectPath || session?.project_path || "");
   const [messages, setMessages] = useState<ClaudeStreamMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentThinkingMode, setCurrentThinkingMode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rawJsonlOutput, setRawJsonlOutput] = useState<string[]>([]);
   const [copyPopoverOpen, setCopyPopoverOpen] = useState(false);
@@ -352,7 +431,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const [isZoomPopoverOpen, setIsZoomPopoverOpen] = useState(false);
 
   // Queued prompts state
-  const [queuedPrompts, setQueuedPrompts] = useState<Array<{ id: string; prompt: string; model: "sonnet" | "opus" }>>([]);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   
   // New state for preview feature
   const [showPreview, setShowPreview] = useState(false);
@@ -368,7 +447,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const hasActiveSessionRef = useRef(false);
   const floatingPromptRef = useRef<FloatingPromptInputRef>(null);
-  const queuedPromptsRef = useRef<Array<{ id: string; prompt: string; model: "sonnet" | "opus" }>>([]);
+  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const isMountedRef = useRef(true);
   const isListeningRef = useRef(false);
   const sessionStartTime = useRef<number>(Date.now());
@@ -392,6 +471,9 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     wasResumed: !!session,
     modelChanges: [] as Array<{ from: string; to: string; timestamp: number }>,
   });
+  const pendingToolUsesRef = useRef<Map<string, string>>(new Map());
+  const [pendingToolNames, setPendingToolNames] = useState<string[]>([]);
+  const hasPendingEffects = pendingToolNames.length > 0;
   const pendingMessagesRef = useRef<ClaudeStreamMessage[]>([]);
   const pendingRawPayloadsRef = useRef<string[]>([]);
   const flushHandleRef = useRef<number | null>(null);
@@ -458,6 +540,38 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     },
     [scheduleFlush],
   );
+  const rebuildPendingToolUses = useCallback((msgs: ClaudeStreamMessage[]) => {
+    const pending = new Map<string, string>();
+
+    msgs.forEach(message => {
+      extractToolUseEntries(message).forEach(({ id, name }) => pending.set(id, name));
+      extractToolResultIds(message).forEach(id => pending.delete(id));
+    });
+
+    pendingToolUsesRef.current = pending;
+    setPendingToolNames(Array.from(new Set(pending.values())));
+  }, []);
+  const appendPendingToolUses = useCallback((msgs: ClaudeStreamMessage[], startIndex: number) => {
+    if (startIndex < 0) {
+      startIndex = 0;
+    }
+
+    if (startIndex >= msgs.length) {
+      return;
+    }
+
+    const pending = new Map(pendingToolUsesRef.current);
+
+    for (let i = startIndex; i < msgs.length; i++) {
+      const message = msgs[i];
+
+      extractToolUseEntries(message).forEach(({ id, name }) => pending.set(id, name));
+      extractToolResultIds(message).forEach(id => pending.delete(id));
+    }
+
+    pendingToolUsesRef.current = pending;
+    setPendingToolNames(Array.from(new Set(pending.values())));
+  }, []);
   const replaceMessages = useCallback(
     (nextMessages: ClaudeStreamMessage[], nextRaw: string[]) => {
       cancelScheduledFlush();
@@ -465,10 +579,12 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       pendingMessagesRef.current = [];
       pendingRawPayloadsRef.current = [];
 
+      rebuildPendingToolUses(nextMessages);
+
       setMessages(nextMessages);
       setRawJsonlOutput(nextRaw);
     },
-    [cancelScheduledFlush],
+    [cancelScheduledFlush, rebuildPendingToolUses],
   );
   useEffect(() => () => {
     cancelScheduledFlush();
@@ -597,6 +713,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     if (shouldRebuild) {
       updatedEntries = buildDisplayableEntries(messages, hideToolMessages);
       rebuilt = true;
+      rebuildPendingToolUses(messages);
     } else if (newCount > prevCount) {
       const nextEntries = prevEntries.slice();
       let added = false;
@@ -612,9 +729,14 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       if (added) {
         updatedEntries = nextEntries;
       }
-    } else if (newCount === 0 && prevEntries.length !== 0) {
-      updatedEntries = [];
-      rebuilt = true;
+
+      appendPendingToolUses(messages, prevCount);
+    } else if (newCount === 0) {
+      if (prevEntries.length !== 0) {
+        updatedEntries = [];
+        rebuilt = true;
+      }
+      rebuildPendingToolUses([]);
     }
 
     if (updatedEntries) {
@@ -661,7 +783,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     prevMessagesCountRef.current = newCount;
     prevHideToolRef.current = hideToolMessages;
     lastMessagesSnapshotRef.current = messages;
-  }, [messages, hideToolMessages]);
+  }, [messages, hideToolMessages, rebuildPendingToolUses, appendPendingToolUses]);
 
   useEffect(() => {
     if (showOutline && outlineItems.length === 0) {
@@ -686,23 +808,40 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     },
   });
 
+  const pendingToolsLabel = useMemo(() => {
+    if (pendingToolNames.length === 0) {
+      return '';
+    }
+
+    if (pendingToolNames.length <= 3) {
+      return pendingToolNames.join(', ');
+    }
+
+    const visible = pendingToolNames.slice(0, 3).join(', ');
+    return `${visible} +${pendingToolNames.length - 3}`;
+  }, [pendingToolNames]);
+
   useEffect(() => {
     if (typeof rowVirtualizer.measure === 'function') {
       rowVirtualizer.measure();
     }
   }, [chatZoom, rowVirtualizer]);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('[ClaudeCodeSession] State update:', {
-      projectPath,
-      session,
-      extractedSessionInfo,
-      effectiveSession,
-      messagesCount: messages.length,
-      isLoading
-    });
-  }, [projectPath, session, extractedSessionInfo, effectiveSession, messages.length, isLoading]);
+  // Helper function to get thinking mode display name
+  const getThinkingModeDisplayName = (mode: string) => {
+    switch (mode) {
+      case 'think':
+        return t('prompt.thinkingBasic');
+      case 'think_hard':
+        return t('prompt.thinkingDeep');
+      case 'think_harder':
+        return t('prompt.thinkingHarder');
+      case 'ultrathink':
+        return t('prompt.thinkingUltra');
+      default:
+        return mode;
+    }
+  };
 
   // Load session history if resuming
   useEffect(() => {
@@ -929,8 +1068,22 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
   // Project path selection handled by parent tab controls
 
-  const handleSendPrompt = async (prompt: string, model: "sonnet" | "opus") => {
-    console.log('[ClaudeCodeSession] handleSendPrompt called with:', { prompt, model, projectPath, claudeSessionId, effectiveSession });
+  const handleSendPrompt = async (
+    prompt: string,
+    model: "sonnet" | "opus" | "opusplan",
+    options?: {
+      displayPrompt?: string;
+      thinkingMode?: ThinkingMode;
+    }
+  ) => {
+    console.log('[ClaudeCodeSession] handleSendPrompt called with:', {
+      prompt: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+      model,
+      projectPath,
+      claudeSessionId,
+      effectiveSession,
+      options
+    });
     
     if (!projectPath) {
       setError("Please select a project directory first");
@@ -939,17 +1092,23 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
     // If already loading, queue the prompt
     if (isLoading) {
-      const newPrompt = {
+      const newPrompt: QueuedPrompt = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         prompt,
-        model
+        model,
+        displayPrompt: options?.displayPrompt,
+        thinkingMode: options?.thinkingMode,
       };
       setQueuedPrompts(prev => [...prev, newPrompt]);
       return;
     }
 
     try {
+      const displayPrompt = (options?.displayPrompt ?? prompt).trim();
+      const thinkingMode = options?.thinkingMode ?? 'auto';
+
       setIsLoading(true);
+      setCurrentThinkingMode(thinkingMode !== 'auto' ? thinkingMode : null);
       setError(null);
       hasActiveSessionRef.current = true;
       
@@ -1198,6 +1357,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           // Ensure generic listeners are torn down when execution finishes
           stopGenericListeners();
           setIsLoading(false);
+          setCurrentThinkingMode(null);
           hasActiveSessionRef.current = false;
           isListeningRef.current = false; // Reset listening state
           
@@ -1272,7 +1432,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   effectiveSession.id,
                   effectiveSession.project_id,
                   projectPath,
-                  prompt
+                  displayPrompt
                 );
                 // Reload timeline to show new checkpoint
                 setTimelineVersion((v) => v + 1);
@@ -1289,7 +1449,10 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             
             // Small delay to ensure UI updates
             setTimeout(() => {
-              handleSendPrompt(nextPrompt.prompt, nextPrompt.model);
+              handleSendPrompt(nextPrompt.prompt, nextPrompt.model, {
+                displayPrompt: nextPrompt.displayPrompt,
+                thinkingMode: nextPrompt.thinkingMode,
+              });
             }, 100);
           }
         };
@@ -1322,7 +1485,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             content: [
               {
                 type: "text",
-                text: prompt
+                text: displayPrompt
               }
             ]
           }
@@ -1350,14 +1513,14 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         }
         
         // Track enhanced prompt submission
-        const codeBlockMatches = prompt.match(/```[\s\S]*?```/g) || [];
+        const codeBlockMatches = displayPrompt.match(/```[\s\S]*?```/g) || [];
         const hasCode = codeBlockMatches.length > 0;
         const conversationDepth = messages.filter(m => m.user_message).length;
         const sessionAge = sessionStartTime.current ? Date.now() - sessionStartTime.current : 0;
-        const wordCount = prompt.split(/\s+/).filter(word => word.length > 0).length;
+        const wordCount = displayPrompt.split(/\s+/).filter(word => word.length > 0).length;
         
         trackEvent.enhancedPromptSubmitted({
-          prompt_length: prompt.length,
+          prompt_length: displayPrompt.length,
           model: model,
           has_attachments: false, // TODO: Add attachment support when implemented
           source: 'keyboard', // TODO: Track actual source (keyboard vs button)
@@ -1366,17 +1529,18 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           prompt_complexity: wordCount < 20 ? 'simple' : wordCount < 100 ? 'moderate' : 'complex',
           contains_code: hasCode,
           language_detected: hasCode ? codeBlockMatches?.[0]?.match(/```(\w+)/)?.[1] : undefined,
-          session_age_ms: sessionAge
+          session_age_ms: sessionAge,
+          thinking_mode: thinkingMode,
         });
 
         // Execute the appropriate command
         if (effectiveSession && !isFirstPrompt) {
-          console.log('[ClaudeCodeSession] Resuming session:', effectiveSession.id);
+          console.log('[ClaudeCodeSession] Resuming session:', effectiveSession.id, 'with prompt:', prompt.substring(0, 50) + '...');
           trackEvent.sessionResumed(effectiveSession.id);
           trackEvent.modelSelected(model);
           await api.resumeClaudeCode(projectPath, effectiveSession.id, prompt, model);
         } else {
-          console.log('[ClaudeCodeSession] Starting new session');
+          console.log('[ClaudeCodeSession] Starting new session with prompt:', prompt.substring(0, 50) + '...');
           setIsFirstPrompt(false);
           trackEvent.sessionCreated(model, 'prompt_input');
           trackEvent.modelSelected(model);
@@ -1385,8 +1549,11 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       }
     } catch (err) {
       console.error("Failed to send prompt:", err);
-      setError(t("errors.failedToSendPrompt"));
+      // Display detailed error for debugging
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`发送提示失败: ${errorMessage}`);
       setIsLoading(false);
+      setCurrentThinkingMode(null);
       hasActiveSessionRef.current = false;
     }
   };
@@ -1542,7 +1709,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
   const handleCancelExecution = async () => {
     if (!claudeSessionId || !isLoading) return;
-    
+
     try {
       const sessionStartTime = messages.length > 0 ? messages[0].timestamp || Date.now() : Date.now();
       const duration = Date.now() - sessionStartTime;
@@ -1649,6 +1816,22 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       setError(null);
     }
   };
+
+  useEffect(() => {
+    if (!hasPendingEffects || !isLoading) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleCancelExecution();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasPendingEffects, isLoading, handleCancelExecution]);
 
   const handleFork = (checkpointId: string) => {
     setForkCheckpointId(checkpointId);
@@ -1833,7 +2016,25 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           transition={{ duration: 0.15 }}
           className="flex items-center justify-center py-4 mb-20"
         >
-          <div className="rotating-symbol text-primary" />
+          <div className="flex flex-col items-center gap-3">
+            <div className="rotating-symbol text-primary" />
+            {currentThinkingMode && !hasPendingEffects && (
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <span className="text-blue-500 font-semibold">
+                  • {t('errors.processingWithModePrefix')} {getThinkingModeDisplayName(currentThinkingMode)} {t('errors.processingWithModeSuffix')}
+                </span>
+                <span className="text-muted-foreground">{t('errors.thinkingModeTakesLonger')}</span>
+              </div>
+            )}
+            {hasPendingEffects && (
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <span className="text-orange-500 font-semibold">
+                  • Effecting{pendingToolsLabel ? ` ${pendingToolsLabel}` : ''}…
+                </span>
+                <span className="text-muted-foreground">(esc to interrupt)</span>
+              </div>
+            )}
+          </div>
         </motion.div>
       )}
 
@@ -1922,7 +2123,10 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   <div className="flex items-center gap-3">
                     <div className="rotating-symbol text-primary" />
                     <span className="text-sm text-muted-foreground">
-                      {session ? "Loading session history..." : "Initializing Claude Code..."}
+                      {currentThinkingMode ?
+                        `${t('errors.usingThinkingModePrefix')} ${getThinkingModeDisplayName(currentThinkingMode)} ${t('errors.usingThinkingModeSuffix')}` :
+                        (session ? t('errors.loadingHistory') : t('errors.initializingClaude'))
+                      }
                     </span>
                   </div>
                 </div>
@@ -1974,7 +2178,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                             {queuedPrompt.model === "opus" ? "Opus" : "Sonnet"}
                           </span>
                         </div>
-                        <p className="text-sm line-clamp-2 break-words">{queuedPrompt.prompt}</p>
+                        <p className="text-sm line-clamp-2 break-words">{queuedPrompt.displayPrompt ?? queuedPrompt.prompt}</p>
                       </div>
                       <motion.div
                         whileTap={{ scale: 0.97 }}

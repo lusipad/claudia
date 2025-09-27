@@ -406,13 +406,13 @@ export const zh: import("./en").TranslationResources = {
     // Thinking modes
     thinkingAuto: "自动",
     thinkingAutoDesc: "让 Claude 决定",
-    thinkingBasic: "思考",
+    thinkingBasic: "思考 (think)",
     thinkingBasicDesc: "基础推理",
-    thinkingDeep: "深度思考",
+    thinkingDeep: "深度思考 (think_hard)",
     thinkingDeepDesc: "更深入的分析",
-    thinkingHarder: "更深入思考",
+    thinkingHarder: "更深入思考 (think_harder)",
     thinkingHarderDesc: "广泛推理",
-    thinkingUltra: "超级思考",
+    thinkingUltra: "超级思考 (ultrathink)",
     thinkingUltraDesc: "最大计算",
 
     // Models
@@ -420,6 +420,8 @@ export const zh: import("./en").TranslationResources = {
     modelSonnetDesc: "更快、更高效，适用于大多数任务",
     modelOpus: "Claude 4 Opus",
     modelOpusDesc: "功能更强大，适用于复杂任务",
+    modelPlan: "计划模式 (opusplan)",
+    modelPlanDesc: "战略规划和分步分析",
 
     // Additional agent keys for basic agents page
     agentsCount: "代理",
@@ -668,6 +670,11 @@ export const zh: import("./en").TranslationResources = {
     failedToForkCheckpoint: "分叉检查点失败",
     loadingHistory: "正在加载会话历史…",
     initializingClaude: "正在初始化 Claude Code…",
+    usingThinkingModePrefix: "正在使用",
+    usingThinkingModeSuffix: "模式 - 这可能需要更长时间…",
+    processingWithModePrefix: "正在以",
+    processingWithModeSuffix: "模式处理…",
+    thinkingModeTakesLonger: "（这可能需要更长时间）",
     validating: "正在验证…",
     saveSelection: "保存选择",
     noInstallationsFound: "未找到安装",

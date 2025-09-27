@@ -325,6 +325,7 @@ export interface EnhancedPromptSubmittedProperties extends PromptSubmittedProper
   contains_code: boolean;
   language_detected?: string;
   session_age_ms: number;
+  thinking_mode?: string;
 }
 
 // Enhanced tool properties

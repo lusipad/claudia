@@ -1,0 +1,186 @@
+name: Auto Version & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        - prerelease
+      prerelease_type:
+        description: 'Pre-release type (if prerelease selected)'
+        required: false
+        default: 'alpha'
+        type: choice
+        options:
+        - alpha
+        - beta
+        - rc
+      custom_version:
+        description: 'Custom version (overrides version_type, e.g., 1.2.3)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  version-and-release:
+    name: Version Bump & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: current_version
+        run: |
+          # Get version from package.json
+          CURRENT_VERSION=$(bun run --silent -e "console.log(require('./package.json').version)")
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Calculate new version
+        id: new_version
+        run: |
+          CURRENT="${{ steps.current_version.outputs.current }}"
+
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            # Use custom version
+            NEW_VERSION="${{ inputs.custom_version }}"
+            echo "Using custom version: $NEW_VERSION"
+          else
+            # Parse current version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+            # Remove any pre-release suffix from patch
+            PATCH=$(echo "$PATCH" | cut -d'-' -f1)
+
+            case "${{ inputs.version_type }}" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              prerelease)
+                PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH-${{ inputs.prerelease_type }}.1"
+                ;;
+            esac
+          fi
+
+          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update version files
+        run: |
+          NEW_VERSION="${{ steps.new_version.outputs.new }}"
+
+          # Update package.json
+          bun run --silent -e "
+            const pkg = require('./package.json');
+            pkg.version = '$NEW_VERSION';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
+
+          # Update tauri.conf.json
+          bun run --silent -e "
+            const config = require('./src-tauri/tauri.conf.json');
+            config.version = '$NEW_VERSION';
+            require('fs').writeFileSync('./src-tauri/tauri.conf.json', JSON.stringify(config, null, 2) + '\n');
+          "
+
+          echo "Updated version files to $NEW_VERSION"
+
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          NEW_VERSION="${{ steps.new_version.outputs.new }}"
+          CURRENT_VERSION="${{ steps.current_version.outputs.current }}"
+
+          # Create changelog entry
+          cat > temp_changelog.md << EOF
+          ## [$NEW_VERSION] - $(date +%Y-%m-%d)
+
+          ### Added
+          -
+
+          ### Changed
+          -
+
+          ### Fixed
+          -
+
+          EOF
+
+          # Get commits since last version tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            echo "### Commits since $LAST_TAG" >> temp_changelog.md
+            git log --pretty=format:"- %s" $LAST_TAG..HEAD >> temp_changelog.md
+            echo "" >> temp_changelog.md
+          fi
+
+          echo "" >> temp_changelog.md
+
+          # Prepend to existing CHANGELOG.md if it exists
+          if [ -f CHANGELOG.md ]; then
+            cat CHANGELOG.md >> temp_changelog.md
+          else
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "All notable changes to this project will be documented in this file." >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+
+          mv temp_changelog.md CHANGELOG.md
+
+      - name: Commit version changes
+        run: |
+          git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json CHANGELOG.md
+          git commit -m "chore: bump version to ${{ steps.new_version.outputs.new }}"
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ steps.new_version.outputs.tag }}"
+          git push origin main
+          git push origin "${{ steps.new_version.outputs.tag }}"
+
+      - name: Trigger release workflow
+        run: |
+          echo "✅ Version bumped to ${{ steps.new_version.outputs.new }}"
+          echo "🏷️ Tag created: ${{ steps.new_version.outputs.tag }}"
+          echo "🚀 Release workflow will be triggered automatically by the tag push"
+          echo ""
+          echo "Monitor the release at: https://github.com/${{ github.repository }}/actions"

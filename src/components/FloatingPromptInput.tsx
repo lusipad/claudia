@@ -13,7 +13,8 @@ import {
   Lightbulb,
   Cpu,
   Rocket,
-  
+  FileText,
+
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,14 @@ interface FloatingPromptInputProps {
   /**
    * Callback when prompt is sent
    */
-  onSend: (prompt: string, model: "sonnet" | "opus") => void;
+  onSend: (
+    prompt: string,
+    model: "sonnet" | "opus" | "opusplan",
+    options?: {
+      displayPrompt?: string;
+      thinkingMode?: ThinkingMode;
+    }
+  ) => void;
   /**
    * Whether the input is loading
    */
@@ -42,7 +50,7 @@ interface FloatingPromptInputProps {
   /**
    * Default model to select
    */
-  defaultModel?: "sonnet" | "opus";
+  defaultModel?: "sonnet" | "opus" | "opusplan";
   /**
    * Project path for file picker
    */
@@ -68,7 +76,7 @@ export interface FloatingPromptInputRef {
 /**
  * Thinking mode type definition
  */
-type ThinkingMode = "auto" | "think" | "think_hard" | "think_harder" | "ultrathink";
+export type ThinkingMode = "auto" | "think" | "think_hard" | "think_harder" | "ultrathink";
 
 /**
  * Thinking mode configuration
@@ -163,7 +171,7 @@ const ThinkingModeIndicator: React.FC<{ level: number; color?: string }> = ({ le
 };
 
 type Model = {
-  id: "sonnet" | "opus";
+  id: "sonnet" | "opus" | "opusplan";
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -187,6 +195,14 @@ const createModels = (t: any): Model[] => [
     description: t("prompt.modelOpusDesc"),
     icon: <Zap className="h-3.5 w-3.5" />,
     shortName: "O",
+    color: "text-primary"
+  },
+  {
+    id: "opusplan",
+    name: t("prompt.modelPlan"),
+    description: t("prompt.modelPlanDesc"),
+    icon: <FileText className="h-3.5 w-3.5" />,
+    shortName: "P",
     color: "text-primary"
   }
 ];
@@ -217,7 +233,7 @@ const FloatingPromptInputInner = (
 ) => {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState("");
-  const [selectedModel, setSelectedModel] = useState<"sonnet" | "opus">(defaultModel);
+  const [selectedModel, setSelectedModel] = useState<"sonnet" | "opus" | "opusplan">(defaultModel);
   const [selectedThinkingMode, setSelectedThinkingMode] = useState<ThinkingMode>("auto");
   const [isExpanded, setIsExpanded] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -282,8 +298,6 @@ const FloatingPromptInputInner = (
 
   // Extract image paths from prompt text
   const extractImagePaths = (text: string): string[] => {
-    console.log('[extractImagePaths] Input text length:', text.length);
-    
     // Updated regex to handle both quoted and unquoted paths
     // Pattern 1: @"path with spaces or data URLs" - quoted paths
     // Pattern 2: @path - unquoted paths (continues until @ or end)
@@ -294,17 +308,15 @@ const FloatingPromptInputInner = (
     
     // First, extract quoted paths (including data URLs)
     let matches = Array.from(text.matchAll(quotedRegex));
-    console.log('[extractImagePaths] Quoted matches:', matches.length);
-    
+
     for (const match of matches) {
       const path = match[1]; // No need to trim, quotes preserve exact path
-      console.log('[extractImagePaths] Processing quoted path:', path.startsWith('data:') ? 'data URL' : path);
-      
+
       // For data URLs, use as-is; for file paths, convert to absolute
-      const fullPath = path.startsWith('data:') 
-        ? path 
+      const fullPath = path.startsWith('data:')
+        ? path
         : (path.startsWith('/') ? path : (projectPath ? `${projectPath}/${path}` : path));
-      
+
       if (isImageFile(fullPath)) {
         pathsSet.add(fullPath);
       }
@@ -315,33 +327,27 @@ const FloatingPromptInputInner = (
     
     // Then extract unquoted paths (typically file paths)
     matches = Array.from(textWithoutQuoted.matchAll(unquotedRegex));
-    console.log('[extractImagePaths] Unquoted matches:', matches.length);
-    
+
     for (const match of matches) {
       const path = match[1].trim();
       // Skip if it looks like a data URL fragment (shouldn't happen with proper quoting)
       if (path.includes('data:')) continue;
-      
-      console.log('[extractImagePaths] Processing unquoted path:', path);
-      
+
       // Convert relative path to absolute if needed
       const fullPath = path.startsWith('/') ? path : (projectPath ? `${projectPath}/${path}` : path);
-      
+
       if (isImageFile(fullPath)) {
         pathsSet.add(fullPath);
       }
     }
 
     const uniquePaths = Array.from(pathsSet);
-    console.log('[extractImagePaths] Final extracted paths (unique):', uniquePaths.length);
     return uniquePaths;
   };
 
   // Update embedded images when prompt changes
   useEffect(() => {
-    console.log('[useEffect] Prompt changed:', prompt);
     const imagePaths = extractImagePaths(prompt);
-    console.log('[useEffect] Setting embeddedImages to:', imagePaths);
     setEmbeddedImages(imagePaths);
     
     // Auto-resize on prompt change (handles paste, programmatic changes, etc.)
@@ -472,7 +478,6 @@ const FloatingPromptInputInner = (
 
     // Check if @ was just typed
     if (projectPath?.trim() && newValue.length > prompt.length && newValue[newCursorPosition - 1] === '@') {
-      console.log('[FloatingPromptInput] @ detected, projectPath:', projectPath);
       setShowFilePicker(true);
       setFilePickerQuery("");
       setCursorPosition(newCursorPosition);
@@ -688,21 +693,39 @@ const FloatingPromptInputInner = (
     return false;
   };
 
+  const sanitizePromptForThinking = (text: string) => {
+    const stripped = text.trim();
+    if (!stripped) {
+      return stripped;
+    }
+
+    const punctuationRegex = /[.!?。！？…]$/;
+    return punctuationRegex.test(stripped) ? stripped : `${stripped}.`;
+  };
+
   const handleSend = () => {
     if (isIMEInteraction()) {
       return;
     }
 
     if (prompt.trim() && !disabled) {
-      let finalPrompt = prompt.trim();
+      const trimmedPrompt = prompt.trim();
+      let finalPrompt = trimmedPrompt;
+      let displayPrompt = trimmedPrompt;
 
       // Append thinking phrase if not auto mode
       const thinkingMode = THINKING_MODES.find(m => m.id === selectedThinkingMode);
       if (thinkingMode && thinkingMode.phrase) {
-        finalPrompt = `${finalPrompt}.\n\n${thinkingMode.phrase}.`;
+        const base = sanitizePromptForThinking(trimmedPrompt);
+        const phraseLine = thinkingMode.phrase.trim();
+        // Use comma separation with space for better readability and Windows compatibility
+        finalPrompt = `${base}, ${phraseLine}.`;
       }
 
-      onSend(finalPrompt, selectedModel);
+      onSend(finalPrompt, selectedModel, {
+        displayPrompt,
+        thinkingMode: thinkingMode?.id,
+      });
       setPrompt("");
       setEmbeddedImages([]);
       setTextareaHeight(48); // Reset height after sending

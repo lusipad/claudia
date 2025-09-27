@@ -1,0 +1,373 @@
+name: Enhanced Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build matrix for all platforms and architectures
+  build:
+    name: Build ${{ matrix.platform }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows builds
+          - platform: windows
+            arch: x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: msi,nsis
+          - platform: windows
+            arch: aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bundle: msi,nsis
+
+          # macOS builds
+          - platform: macos
+            arch: universal
+            os: macos-latest
+            target: universal-apple-darwin
+            bundle: dmg,app
+          - platform: macos
+            arch: x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            bundle: dmg,app
+          - platform: macos
+            arch: aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            bundle: dmg,app
+
+          # Linux builds
+          - platform: linux
+            arch: x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle: deb,appimage
+          - platform: linux
+            arch: aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            bundle: deb,appimage
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Set up build tools
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      # Platform-specific dependencies
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+          # For cross-compilation to aarch64
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          fi
+
+      - name: Setup macOS signing
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "Setting up macOS code signing..."
+
+            # Create keychain
+            security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security default-keychain -s build.keychain
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+            security set-keychain-settings -t 3600 -u build.keychain
+
+            # Import certificate
+            echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+            security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+            # Set signing identity
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$(pwd)/certificate.p12" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$APPLE_CERTIFICATE_PASSWORD" >> $GITHUB_ENV
+          else
+            echo "No signing certificate provided, building unsigned"
+          fi
+
+      # Install dependencies and build
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            # Universal build for macOS
+            if [ "${{ matrix.arch }}" = "universal" ]; then
+              bun run tauri build --target universal-apple-darwin --bundles ${{ matrix.bundle }}
+            else
+              bun run tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+            fi
+          else
+            bun run tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+          fi
+
+      # macOS notarization
+      - name: Notarize macOS app
+        if: matrix.platform == 'macos' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          echo "Notarizing macOS app..."
+
+          # Find and notarize DMG files
+          find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" -exec \
+            xcrun notarytool submit {} --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait \;
+
+          # Find and notarize APP bundles
+          find src-tauri/target/${{ matrix.target }}/release/bundle/macos -name "*.app" -exec \
+            xcrun notarytool submit {} --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait \;
+
+      # Prepare artifacts
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts
+
+          # Copy built files with proper naming
+          case "${{ matrix.platform }}" in
+            windows)
+              cp src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi artifacts/ || true
+              cp src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe artifacts/ || true
+              ;;
+            macos)
+              cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg artifacts/ || true
+              # Create app archive
+              if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos" ]; then
+                cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
+                tar -czf ../../../../../artifacts/opcode.app.tar.gz *.app
+                cd ../../../../../
+              fi
+              ;;
+            linux)
+              cp src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb artifacts/ || true
+              cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage artifacts/ || true
+              # Make AppImage executable
+              chmod +x artifacts/*.AppImage || true
+              ;;
+          esac
+
+      # Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: warn
+
+  # Create GitHub release
+  create-release:
+    name: Create Release
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "clean_version=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          VERSION="${{ steps.version.outputs.version }}"
+          CLEAN_VERSION="${{ steps.version.outputs.clean_version }}"
+
+          # Process artifacts from all platforms
+          for platform_dir in artifacts/*/; do
+            platform_name=$(basename "$platform_dir")
+            echo "Processing $platform_name artifacts..."
+
+            # Copy with standardized naming
+            for file in "$platform_dir"*; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                extension="${filename##*.}"
+
+                # Create standardized filename
+                new_name="opcode_${CLEAN_VERSION}_${platform_name}.${extension}"
+                cp "$file" "release-assets/$new_name"
+                echo "Copied: $filename -> $new_name"
+              fi
+            done
+          done
+
+          # Create source code archives
+          echo "Creating source code archives..."
+          git archive --format=tar.gz --prefix=opcode-${CLEAN_VERSION}/ \
+            -o release-assets/opcode-${CLEAN_VERSION}-source.tar.gz HEAD
+          git archive --format=zip --prefix=opcode-${CLEAN_VERSION}/ \
+            -o release-assets/opcode-${CLEAN_VERSION}-source.zip HEAD
+
+          # Generate checksums
+          cd release-assets
+          sha256sum * > checksums.sha256
+          echo "Generated checksums:"
+          cat checksums.sha256
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Get previous tag for changelog
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+
+          # Create release notes
+          cat > release_notes.md << 'EOF'
+          ## opcode ${{ steps.version.outputs.version }}
+
+          A powerful GUI desktop application that provides a visual interface and toolkit for Claude Code.
+
+          ### 🚀 What's New
+
+          EOF
+
+          # Add auto-generated changelog if we have a previous tag
+          if [ -n "$PREV_TAG" ]; then
+            echo "### 📝 Changes since $PREV_TAG" >> release_notes.md
+            echo "" >> release_notes.md
+            git log --pretty=format:"- %s (%an)" $PREV_TAG..HEAD >> release_notes.md
+            echo "" >> release_notes.md
+          fi
+
+          cat >> release_notes.md << 'EOF'
+
+          ### 📦 Downloads
+
+          **Windows:**
+          - `.msi` - Windows Installer (recommended)
+          - `.exe` - NSIS Installer
+
+          **macOS:**
+          - `.dmg` - Disk Image (Universal: Apple Silicon + Intel)
+          - `.app.tar.gz` - Application Bundle Archive
+
+          **Linux:**
+          - `.AppImage` - Portable application (run anywhere)
+          - `.deb` - Debian/Ubuntu package
+
+          ### 🛠️ Installation
+
+          **Windows:** Download and run the `.msi` installer, or use the `.exe` NSIS installer.
+
+          **macOS:** Download the `.dmg`, open it, and drag opcode to your Applications folder.
+
+          **Linux:**
+          - **AppImage:** `chmod +x opcode*.AppImage && ./opcode*.AppImage`
+          - **Debian/Ubuntu:** `sudo dpkg -i opcode*.deb`
+
+          ### 🔒 Security
+
+          All builds are automatically generated and signed by GitHub Actions. Verify checksums using the provided `checksums.sha256` file.
+
+          ### 🐛 Issues & Support
+
+          Report issues at: https://github.com/${{ github.repository }}/issues
+
+          ---
+
+          **Note:** This release includes builds for multiple architectures. Choose the appropriate version for your system:
+          - `x86_64` - Intel/AMD 64-bit processors
+          - `aarch64` - ARM 64-bit processors (Apple Silicon, ARM Linux)
+          - `universal` - macOS Universal binary (works on both Intel and Apple Silicon)
+          EOF
+
+          echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: opcode ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ inputs.prerelease || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+          generate_release_notes: false
+          files: release-assets/*
+          body_path: ${{ steps.release_notes.outputs.release_notes_file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "🎉 Release ${{ steps.version.outputs.version }} created successfully!"
+          echo "📦 Assets uploaded:"
+          ls -la release-assets/
+          echo ""
+          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"

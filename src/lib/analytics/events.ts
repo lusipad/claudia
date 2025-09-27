@@ -449,6 +449,7 @@ export const eventBuilders = {
       contains_code: props.contains_code,
       language_detected: props.language_detected,
       session_age_ms: props.session_age_ms,
+      thinking_mode: props.thinking_mode,
     },
   }),
   
