@@ -244,8 +244,8 @@ brew install pkg-config
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/getAsterisk/opcode.git
-   cd opcode
+   git clone https://github.com/lusipad/claudia.git
+   cd claudia
    ```
 
 2. **安装前端依赖**
@@ -419,16 +419,16 @@ opcode 优先考虑您的隐私和安全：
     <strong>由 <a href="https://asterisk.so/">Asterisk</a> 用 ❤️ 制作</strong>
   </p>
   <p>
-    <a href="https://github.com/getAsterisk/opcode/issues">报告错误</a>
+    <a href="https://github.com/lusipad/claudia/issues">报告错误</a>
     ·
-    <a href="https://github.com/getAsterisk/opcode/issues">请求功能</a>
+    <a href="https://github.com/lusipad/claudia/issues">请求功能</a>
   </p>
 </div>
 
 
 ## Star 历史
 
-[![Star History Chart](https://api.star-history.com/svg?repos=getAsterisk/opcode&type=Date)](https://www.star-history.com/#getAsterisk/opcode&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=lusipad/claudia&type=Date)](https://www.star-history.com/#lusipad/claudia&Date)
 
 ---
 

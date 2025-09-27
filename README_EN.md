@@ -240,8 +240,8 @@ brew install pkg-config
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/getAsterisk/opcode.git
-   cd opcode
+   git clone https://github.com/lusipad/claudia.git
+   cd claudia
    ```
 
 2. **Install Frontend Dependencies**
@@ -415,16 +415,16 @@ This project is licensed under the AGPL License - see the [LICENSE](LICENSE) fil
     <strong>Made with ❤️ by the <a href="https://asterisk.so/">Asterisk</a></strong>
   </p>
   <p>
-    <a href="https://github.com/getAsterisk/opcode/issues">Report Bug</a>
+    <a href="https://github.com/lusipad/claudia/issues">Report Bug</a>
     ·
-    <a href="https://github.com/getAsterisk/opcode/issues">Request Feature</a>
+    <a href="https://github.com/lusipad/claudia/issues">Request Feature</a>
   </p>
 </div>
 
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=getAsterisk/opcode&type=Date)](https://www.star-history.com/#getAsterisk/opcode&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=lusipad/claudia&type=Date)](https://www.star-history.com/#lusipad/claudia&Date)
 
 ---
 
