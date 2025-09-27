@@ -19,16 +19,19 @@ jobs:
   build-linux:
     uses: ./.github/workflows/build-linux.yml
     secrets: inherit
-  
+
   build-macos:
     uses: ./.github/workflows/build-macos.yml
     secrets: inherit
-  
+
+  build-windows:
+    uses: ./.github/workflows/build-windows.yml
+    secrets: inherit
 
   # Create release after all builds complete
   create-release:
     name: Create Release
-    needs: [build-linux, build-macos]
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     
     steps:
@@ -53,17 +56,23 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          
+
           # Linux artifacts
           if [ -d "artifacts/linux-x86_64" ]; then
             cp artifacts/linux-x86_64/*.deb release-assets/opcode_${{ steps.version.outputs.version }}_linux_x86_64.deb || true
             cp artifacts/linux-x86_64/*.AppImage release-assets/opcode_${{ steps.version.outputs.version }}_linux_x86_64.AppImage || true
           fi
-          
+
           # macOS artifacts
           if [ -d "artifacts/macos-universal" ]; then
             cp artifacts/macos-universal/opcode.dmg release-assets/opcode_${{ steps.version.outputs.version }}_macos_universal.dmg || true
             cp artifacts/macos-universal/opcode.app.zip release-assets/opcode_${{ steps.version.outputs.version }}_macos_universal.app.tar.gz || true
+          fi
+
+          # Windows artifacts
+          if [ -d "artifacts/windows-x86_64" ]; then
+            cp artifacts/windows-x86_64/*.msi release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64.msi || true
+            cp artifacts/windows-x86_64/*.exe release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64.exe || true
           fi
           
           # Create source code archives
@@ -103,18 +112,20 @@ jobs:
 
             ## opcode ${{ steps.version.outputs.version }}
 
-            This release was built and signed by CI. Artifacts for macOS and Linux are attached below.
+            This release was built and signed by CI. Artifacts for Windows, macOS and Linux are attached below.
 
             - Auto-generated release notes are included below (commits, PRs, and contributors).
             - Checksums (`.sha256`) are provided for all assets.
 
             ### Downloads
 
-            - macOS: `.dmg`, `.app.tar.gz` (Universal: Apple Silicon + Intel)
-            - Linux: `.AppImage`, `.deb`
+            - **Windows**: `.msi` (installer), `.exe` (portable)
+            - **macOS**: `.dmg`, `.app.tar.gz` (Universal: Apple Silicon + Intel)
+            - **Linux**: `.AppImage`, `.deb`
 
             ### Installation
 
-            - macOS: Open the `.dmg` and drag opcode to Applications.
-            - Linux: `chmod +x` the `.AppImage` and run it, or install the `.deb` on Debian/Ubuntu.
+            - **Windows**: Run the `.msi` installer or extract and run the `.exe` portable version.
+            - **macOS**: Open the `.dmg` and drag opcode to Applications.
+            - **Linux**: `chmod +x` the `.AppImage` and run it, or install the `.deb` on Debian/Ubuntu.
             
