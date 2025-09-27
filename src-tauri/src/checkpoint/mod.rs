@@ -171,8 +171,6 @@ pub struct FileDiff {
     pub diff_content: Option<String>,
 }
 
-
-
 impl SessionTimeline {
     /// Create a new empty timeline
     pub fn new(session_id: String) -> Self {

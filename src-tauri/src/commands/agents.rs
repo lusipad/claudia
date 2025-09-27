@@ -788,14 +788,8 @@ pub async fn execute_agent(
         task,
         execution_model,
     };
-    
-    spawn_agent_system(
-        app,
-        spawn_params,
-        db,
-        registry,
-    )
-    .await
+
+    spawn_agent_system(app, spawn_params, db, registry).await
 }
 
 /// Creates a system binary command for agent execution
@@ -839,7 +833,8 @@ async fn spawn_agent_system(
     registry: State<'_, crate::process::ProcessRegistryState>,
 ) -> Result<i64, String> {
     // Build the command
-    let mut cmd = create_agent_system_command(&params.claude_path, params.args, &params.project_path);
+    let mut cmd =
+        create_agent_system_command(&params.claude_path, params.args, &params.project_path);
 
     // Spawn the process
     info!("🚀 Spawning Claude system process...");
@@ -1021,7 +1016,7 @@ async fn spawn_agent_system(
         task: params.task.clone(),
         model: params.execution_model.clone(),
     };
-    
+
     registry
         .0
         .register_process(process_params, child)

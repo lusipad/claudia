@@ -66,11 +66,7 @@ impl ProcessRegistry {
     }
 
     /// Register a new running agent process
-    pub fn register_process(
-        &self,
-        params: AgentProcessParams,
-        child: Child,
-    ) -> Result<(), String> {
+    pub fn register_process(&self, params: AgentProcessParams, child: Child) -> Result<(), String> {
         let process_info = ProcessInfo {
             run_id: params.run_id,
             process_type: ProcessType::AgentRun {
@@ -89,10 +85,7 @@ impl ProcessRegistry {
 
     /// Register a new running agent process using sidecar (similar to register_process but for sidecar children)
     #[allow(dead_code)]
-    pub fn register_sidecar_process(
-        &self,
-        params: AgentProcessParams,
-    ) -> Result<(), String> {
+    pub fn register_sidecar_process(&self, params: AgentProcessParams) -> Result<(), String> {
         let process_info = ProcessInfo {
             run_id: params.run_id,
             process_type: ProcessType::AgentRun {

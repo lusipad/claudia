@@ -130,14 +130,15 @@ fn execute_claude_mcp_command(app_handle: &AppHandle, args: Vec<&str>) -> Result
 
 /// Adds a new MCP server
 #[tauri::command]
-pub async fn mcp_add(
-    app: AppHandle,
-    params: McpAddParams,
-) -> Result<AddServerResult, String> {
-    info!("Adding MCP server: {} with transport: {}", params.name, params.transport);
+pub async fn mcp_add(app: AppHandle, params: McpAddParams) -> Result<AddServerResult, String> {
+    info!(
+        "Adding MCP server: {} with transport: {}",
+        params.name, params.transport
+    );
 
     // Prepare owned strings for environment variables
-    let env_args: Vec<String> = params.env
+    let env_args: Vec<String> = params
+        .env
         .iter()
         .map(|(key, value)| format!("{}={}", key, value))
         .collect();
