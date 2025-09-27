@@ -11,13 +11,17 @@ use std::process::Command;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 fn new_command(program: &str) -> Command {
-    let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new(program);
         cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd
     }
-    cmd
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new(program)
+    }
 }
 use tauri::Manager;
 
@@ -505,7 +509,7 @@ fn find_standard_installations() -> Vec<ClaudeInstallation> {
 }
 
 /// Get Claude version by running --version command
-fn get_claude_version(path: &String) -> Result<Option<String>, String> {
+fn get_claude_version(path: &str) -> Result<Option<String>, String> {
     match new_command(path).arg("--version").output() {
         Ok(output) => {
             if output.status.success() {

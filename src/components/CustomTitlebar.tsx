@@ -123,9 +123,8 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
 
     return (
       <div
-        className={`${containerClassName}`.trim()}
+        className={`${containerClassName} flex items-center gap-2`.trim()}
         style={{
-          position: 'relative',
           width: '56px',
           height: '16px'
         }}
@@ -135,25 +134,26 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             e.stopPropagation();
             handleMinimize();
           }}
-          className="tauri-no-drag"
+          className="tauri-no-drag group"
           style={{
-            position: 'absolute',
-            left: '0px',
-            top: '2px',
             width: '12px',
             height: '12px',
             borderRadius: '50%',
             backgroundColor: '#EAB308',
             border: 'none',
             cursor: 'pointer',
-            transition: 'background-color 0.2s'
+            transition: 'background-color 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#CA8A04'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EAB308'}
           title={t('titlebar.minimize')}
         >
           {isHovered && (
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="pointer-events-none flex items-center justify-center">
               {renderGlyph('minimize')}
             </span>
           )}
@@ -164,25 +164,26 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             e.stopPropagation();
             handleMaximize();
           }}
-          className="tauri-no-drag"
+          className="tauri-no-drag group"
           style={{
-            position: 'absolute',
-            left: '20px',
-            top: '2px',
             width: '12px',
             height: '12px',
             borderRadius: '50%',
             backgroundColor: '#22C55E',
             border: 'none',
             cursor: 'pointer',
-            transition: 'background-color 0.2s'
+            transition: 'background-color 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#16A34A'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#22C55E'}
           title={t('titlebar.maximize')}
         >
           {isHovered && (
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="pointer-events-none flex items-center justify-center">
               {renderGlyph('maximize')}
             </span>
           )}
@@ -193,25 +194,26 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             e.stopPropagation();
             handleClose();
           }}
-          className="tauri-no-drag"
+          className="tauri-no-drag group"
           style={{
-            position: 'absolute',
-            left: '40px',
-            top: '2px',
             width: '12px',
             height: '12px',
             borderRadius: '50%',
             backgroundColor: '#EF4444',
             border: 'none',
             cursor: 'pointer',
-            transition: 'background-color 0.2s'
+            transition: 'background-color 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#DC2626'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EF4444'}
           title={t('titlebar.close')}
         >
           {isHovered && (
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="pointer-events-none flex items-center justify-center">
               {renderGlyph('close')}
             </span>
           )}
