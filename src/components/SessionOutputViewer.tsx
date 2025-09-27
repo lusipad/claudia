@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Copy, RefreshCw, RotateCcw, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,7 @@ export function SessionOutputViewer({ session, onClose, className }: SessionOutp
   const { getCachedOutput, setCachedOutput } = useOutputCache();
 
   // Auto-scroll logic similar to AgentExecution
-  const isAtBottom = () => {
+  const isAtBottom = useCallback(() => {
     const container = isFullscreen ? fullscreenScrollRef.current : scrollAreaRef.current;
     if (container) {
       const { scrollTop, scrollHeight, clientHeight } = container;
@@ -63,16 +63,29 @@ export function SessionOutputViewer({ session, onClose, className }: SessionOutp
       return distanceFromBottom < 1;
     }
     return true;
-  };
+  }, [isFullscreen]);
 
-  const scrollToBottom = () => {
-    if (!hasUserScrolled) {
-      const endRef = isFullscreen ? fullscreenMessagesEndRef.current : outputEndRef.current;
-      if (endRef) {
-        endRef.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = hasUserScrolled ? 'smooth' : 'auto', force = false) => {
+      if (!force && hasUserScrolled && !isAtBottom()) {
+        return;
       }
-    }
-  };
+
+      const container = isFullscreen ? fullscreenScrollRef.current : scrollAreaRef.current;
+      if (container) {
+        if (behavior === 'smooth') {
+          container.scrollTo({ top: container.scrollHeight, behavior });
+        } else {
+          container.scrollTop = container.scrollHeight;
+        }
+        return;
+      }
+
+      const fallbackRef = isFullscreen ? fullscreenMessagesEndRef.current : outputEndRef.current;
+      fallbackRef?.scrollIntoView({ behavior });
+    },
+    [hasUserScrolled, isAtBottom, isFullscreen]
+  );
 
   // Clean up listeners on unmount
   useEffect(() => {
@@ -87,7 +100,26 @@ export function SessionOutputViewer({ session, onClose, className }: SessionOutp
     if (shouldAutoScroll) {
       scrollToBottom();
     }
-  }, [messages, hasUserScrolled, isFullscreen]);
+  }, [messages, hasUserScrolled, isAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    if (!session.id) return;
+
+    setHasUserScrolled(false);
+
+    const raf = requestAnimationFrame(() => {
+      const container = scrollAreaRef.current ?? fullscreenScrollRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
+
+      const fallbackRef = fullscreenMessagesEndRef.current ?? outputEndRef.current;
+      fallbackRef?.scrollIntoView({ behavior: 'auto' });
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [session.id]);
 
 
   const loadOutput = async (skipCache = false) => {
