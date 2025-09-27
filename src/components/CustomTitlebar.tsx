@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { Settings, Minus, Square, X, Bot, BarChart3, FileText, Network, Info, MoreVertical } from 'lucide-react';
+import { Settings, Bot, BarChart3, FileText, Network, Info, MoreVertical } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { TooltipProvider, TooltipSimple } from '@/components/ui/tooltip-modern';
 
@@ -76,85 +76,104 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
     }
   };
 
-  const macWindowControls = (
-    <div className="flex items-center space-x-2">
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleClose();
-        }}
-        className="group relative w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-        title={t('titlebar.close')}
-      >
-        {isHovered && (
-          <X size={8} className="text-red-900 opacity-60 group-hover:opacity-100" />
-        )}
-      </button>
+  const renderMacStyleControls = (containerClassName = '') => {
+    const renderGlyph = (type: 'minimize' | 'maximize' | 'close') => {
+      const baseClass = 'opacity-60 group-hover:opacity-100 transition-opacity';
+      switch (type) {
+        case 'minimize':
+          return (
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              className={`${baseClass} text-yellow-900`}
+              fill="none"
+            >
+              <line x1="1" y1="4" x2="7" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          );
+        case 'maximize':
+          return (
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              className={`${baseClass} text-green-900`}
+              fill="none"
+            >
+              <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.1" />
+            </svg>
+          );
+        case 'close':
+        default:
+          return (
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              className={`${baseClass} text-red-900`}
+              fill="none"
+            >
+              <line x1="2" y1="2" x2="6" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <line x1="6" y1="2" x2="2" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          );
+      }
+    };
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleMinimize();
-        }}
-        className="group relative w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-        title={t('titlebar.minimize')}
-      >
-        {isHovered && (
-          <Minus size={8} className="text-yellow-900 opacity-60 group-hover:opacity-100" />
-        )}
-      </button>
-
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleMaximize();
-        }}
-        className="group relative w-3 h-3 rounded-full bg-green-500 hover:bg-green-600 transition-all duration-200 flex items-center justify-center tauri-no-drag"
-        title={t('titlebar.maximize')}
-      >
-        {isHovered && (
-          <Square size={6} className="text-green-900 opacity-60 group-hover:opacity-100" />
-        )}
-      </button>
-    </div>
-  );
-
-  const windowsWindowControls = (
-    <div className="flex items-center tauri-no-drag">
-      <div className="flex overflow-hidden rounded-md border border-border/60">
+    return (
+      <div className={`flex items-center space-x-2 ${containerClassName}`.trim()}>
         <button
           onClick={(e) => {
             e.stopPropagation();
             handleMinimize();
           }}
-          className="w-10 h-7 flex items-center justify-center hover:bg-accent/30 transition-colors"
+          className="group relative flex h-3 w-3 items-center justify-center rounded-full bg-yellow-500 transition-all duration-200 hover:bg-yellow-600 tauri-no-drag"
           title={t('titlebar.minimize')}
         >
-          <Minus size={14} className="text-muted-foreground" />
+          {isHovered && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              {renderGlyph('minimize')}
+            </span>
+          )}
         </button>
+
         <button
           onClick={(e) => {
             e.stopPropagation();
             handleMaximize();
           }}
-          className="w-10 h-7 flex items-center justify-center hover:bg-accent/30 transition-colors"
+          className="group relative flex h-3 w-3 items-center justify-center rounded-full bg-green-500 transition-all duration-200 hover:bg-green-600 tauri-no-drag"
           title={t('titlebar.maximize')}
         >
-          <Square size={12} className="text-muted-foreground" />
+          {isHovered && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              {renderGlyph('maximize')}
+            </span>
+          )}
         </button>
+
         <button
           onClick={(e) => {
             e.stopPropagation();
             handleClose();
           }}
-          className="w-10 h-7 flex items-center justify-center hover:bg-destructive/20 transition-colors"
+          className="group relative flex h-3 w-3 items-center justify-center rounded-full bg-red-500 transition-all duration-200 hover:bg-red-600 tauri-no-drag"
           title={t('titlebar.close')}
         >
-          <X size={12} className="text-destructive" />
+          {isHovered && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              {renderGlyph('close')}
+            </span>
+          )}
         </button>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const macWindowControls = renderMacStyleControls();
+
+  const windowsWindowControls = renderMacStyleControls('tauri-no-drag');
 
   return (
     <TooltipProvider>
