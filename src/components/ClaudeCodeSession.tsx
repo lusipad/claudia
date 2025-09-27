@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -52,6 +52,233 @@ type OutlineItem = {
   level: number;
   displayIndex: number;
   originalIndex: number;
+};
+
+type DisplayableEntry = {
+  message: ClaudeStreamMessage;
+  originalIndex: number;
+};
+
+const TOOLS_WITH_WIDGETS = [
+  "task",
+  "edit",
+  "multiedit",
+  "todowrite",
+  "ls",
+  "read",
+  "glob",
+  "bash",
+  "write",
+  "grep",
+];
+
+const isToolInvocationOnly = (message: ClaudeStreamMessage): boolean => {
+  if (message.type !== "assistant" || !message.message?.content) {
+    return false;
+  }
+
+  const contents = Array.isArray(message.message.content)
+    ? message.message.content
+    : [message.message.content];
+
+  if (contents.length === 0) {
+    return false;
+  }
+
+  return contents.every((content: any) => {
+    if (content.type === "tool_use" || content.type === "thinking") {
+      return true;
+    }
+
+    if (content.type === "text") {
+      const textValue = typeof content.text === "string"
+        ? content.text
+        : content.text?.text ?? "";
+      return textValue.trim().length === 0;
+    }
+
+    return false;
+  });
+};
+
+const shouldDisplayMessage = (
+  messages: ClaudeStreamMessage[],
+  message: ClaudeStreamMessage,
+  index: number,
+  hideToolMessages: boolean,
+): boolean => {
+  if (message.isMeta && !message.leafUuid && !message.summary) {
+    return false;
+  }
+
+  if (message.type === "user" && message.message) {
+    if (message.isMeta) {
+      return false;
+    }
+
+    const msg = message.message;
+
+    if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) {
+      return false;
+    }
+
+    if (Array.isArray(msg.content)) {
+      let hasVisibleContent = false;
+
+      for (const content of msg.content) {
+        if (content.type === "text") {
+          hasVisibleContent = true;
+          break;
+        }
+
+        if (content.type === "tool_result") {
+          let willBeSkipped = false;
+
+          if (content.tool_use_id) {
+            for (let i = index - 1; i >= 0; i--) {
+              const prevMsg = messages[i];
+
+              if (
+                prevMsg.type === "assistant" &&
+                prevMsg.message?.content &&
+                Array.isArray(prevMsg.message.content)
+              ) {
+                const toolUse = prevMsg.message.content.find(
+                  (c: any) => c.type === "tool_use" && c.id === content.tool_use_id,
+                );
+
+                if (toolUse) {
+                  const toolName = toolUse.name?.toLowerCase();
+
+                  if (
+                    (toolName && TOOLS_WITH_WIDGETS.includes(toolName)) ||
+                    toolUse.name?.startsWith("mcp__")
+                  ) {
+                    willBeSkipped = true;
+                  }
+
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!willBeSkipped) {
+            hasVisibleContent = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasVisibleContent) {
+        return false;
+      }
+    }
+  }
+
+  if (hideToolMessages && isToolInvocationOnly(message)) {
+    return false;
+  }
+
+  return true;
+};
+
+const buildDisplayableEntries = (
+  messages: ClaudeStreamMessage[],
+  hideToolMessages: boolean,
+): DisplayableEntry[] => {
+  const entries: DisplayableEntry[] = [];
+
+  messages.forEach((message, index) => {
+    if (shouldDisplayMessage(messages, message, index, hideToolMessages)) {
+      entries.push({ message, originalIndex: index });
+    }
+  });
+
+  return entries;
+};
+
+const extractOutlineItemsFromEntry = (
+  entry: DisplayableEntry,
+  displayIndex: number,
+): OutlineItem[] => {
+  const { message, originalIndex } = entry;
+
+  if (message.type !== "assistant" || !message.message?.content) {
+    return [];
+  }
+
+  const contents = Array.isArray(message.message.content)
+    ? message.message.content
+    : [message.message.content];
+
+  const textBlocks = contents
+    .filter((content: any) => content.type === "text")
+    .map((content: any) => {
+      if (typeof content.text === "string") {
+        return content.text;
+      }
+
+      if (content.text?.text) {
+        return content.text.text;
+      }
+
+      return "";
+    })
+    .filter(Boolean);
+
+  if (textBlocks.length === 0) {
+    return [];
+  }
+
+  const items: OutlineItem[] = [];
+  const combined = textBlocks.join("\n");
+  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+  let match: RegExpExecArray | null;
+  let headingCount = 0;
+
+  while ((match = headingRegex.exec(combined)) !== null) {
+    headingCount += 1;
+    const level = Math.min(match[1].length, 6);
+    const rawLabel = match[2].trim();
+    const label = rawLabel
+      .replace(/[#*`_>\-]/g, "")
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+      .trim();
+
+    items.push({
+      id: `outline-${displayIndex}-${headingCount}`,
+      label: label || `Heading ${headingCount}`,
+      level,
+      displayIndex,
+      originalIndex,
+    });
+  }
+
+  if (headingCount === 0) {
+    const fallback = combined.trim().split("\n")[0] || "";
+    const label = fallback.substring(0, 80) || `Assistant message ${displayIndex + 1}`;
+
+    items.push({
+      id: `outline-${displayIndex}-fallback`,
+      label,
+      level: 1,
+      displayIndex,
+      originalIndex,
+    });
+  }
+
+  return items;
+};
+
+const buildOutlineItems = (entries: DisplayableEntry[]): OutlineItem[] => {
+  const items: OutlineItem[] = [];
+
+  entries.forEach((entry, displayIndex) => {
+    items.push(...extractOutlineItemsFromEntry(entry, displayIndex));
+  });
+
+  return items;
 };
 
 interface ClaudeCodeSessionProps {
@@ -118,6 +345,8 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const [forkSessionName, setForkSessionName] = useState("");
   const [showOutline, setShowOutline] = useState(false);
   const [hideToolMessages, setHideToolMessages] = useState(false);
+  const [displayableEntries, setDisplayableEntries] = useState<DisplayableEntry[]>([]);
+  const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
   const [isDesktop, setIsDesktop] = useState(false);
   const [chatZoom, setChatZoom] = useState(DEFAULT_CHAT_ZOOM);
   const [isZoomPopoverOpen, setIsZoomPopoverOpen] = useState(false);
@@ -163,6 +392,94 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     wasResumed: !!session,
     modelChanges: [] as Array<{ from: string; to: string; timestamp: number }>,
   });
+  const pendingMessagesRef = useRef<ClaudeStreamMessage[]>([]);
+  const pendingRawPayloadsRef = useRef<string[]>([]);
+  const flushHandleRef = useRef<number | null>(null);
+  const cancelScheduledFlush = useCallback(() => {
+    if (flushHandleRef.current === null) {
+      return;
+    }
+
+    if (flushHandleRef.current >= 0 && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(flushHandleRef.current);
+    }
+
+    flushHandleRef.current = null;
+  }, []);
+  const flushPendingMessages = useCallback(() => {
+    const messagesToAppend = pendingMessagesRef.current;
+    const rawToAppend = pendingRawPayloadsRef.current;
+
+    pendingMessagesRef.current = [];
+    pendingRawPayloadsRef.current = [];
+
+    if (messagesToAppend.length > 0) {
+      const appended = messagesToAppend.slice();
+      setMessages(prev => (appended.length === 1 ? [...prev, appended[0]] : prev.concat(appended)));
+    }
+
+    if (rawToAppend.length > 0) {
+      const appendedRaw = rawToAppend.slice();
+      setRawJsonlOutput(prev => (appendedRaw.length === 1 ? [...prev, appendedRaw[0]] : prev.concat(appendedRaw)));
+    }
+  }, []);
+  const scheduleFlush = useCallback(() => {
+    if (flushHandleRef.current !== null) {
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      flushHandleRef.current = -1;
+      Promise.resolve().then(() => {
+        flushHandleRef.current = null;
+        flushPendingMessages();
+      });
+      return;
+    }
+
+    flushHandleRef.current = window.requestAnimationFrame(() => {
+      flushHandleRef.current = null;
+      flushPendingMessages();
+    });
+  }, [flushPendingMessages]);
+  const enqueueMessages = useCallback(
+    (messagesToAdd: ClaudeStreamMessage[], rawPayloads: string[] = []) => {
+      if (messagesToAdd.length > 0) {
+        pendingMessagesRef.current.push(...messagesToAdd);
+      }
+
+      if (rawPayloads.length > 0) {
+        pendingRawPayloadsRef.current.push(...rawPayloads);
+      }
+
+      if (messagesToAdd.length > 0 || rawPayloads.length > 0) {
+        scheduleFlush();
+      }
+    },
+    [scheduleFlush],
+  );
+  const replaceMessages = useCallback(
+    (nextMessages: ClaudeStreamMessage[], nextRaw: string[]) => {
+      cancelScheduledFlush();
+
+      pendingMessagesRef.current = [];
+      pendingRawPayloadsRef.current = [];
+
+      setMessages(nextMessages);
+      setRawJsonlOutput(nextRaw);
+    },
+    [cancelScheduledFlush],
+  );
+  useEffect(() => () => {
+    cancelScheduledFlush();
+    pendingMessagesRef.current = [];
+    pendingRawPayloadsRef.current = [];
+  }, [cancelScheduledFlush]);
+  const displayableEntriesRef = useRef<DisplayableEntry[]>([]);
+  const outlineItemsRef = useRef<OutlineItem[]>([]);
+  const prevMessagesCountRef = useRef(0);
+  const prevHideToolRef = useRef(hideToolMessages);
+  const lastMessagesSnapshotRef = useRef<ClaudeStreamMessage[]>(messages);
 
   // Analytics tracking
   const trackEvent = useTrackEvent();
@@ -263,158 +580,88 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     return null;
   }, [session, extractedSessionInfo, projectPath]);
 
-  const displayableEntries = useMemo(() => {
-    const entries: Array<{ message: ClaudeStreamMessage; originalIndex: number }> = [];
+  useEffect(() => {
+    const prevCount = prevMessagesCountRef.current;
+    const newCount = messages.length;
+    const messagesChanged = lastMessagesSnapshotRef.current !== messages;
+    const replaced = messagesChanged && newCount === prevCount && newCount !== 0;
+    const hideChanged = prevHideToolRef.current !== hideToolMessages;
+    const prevEntries = displayableEntriesRef.current;
+    const prevDisplayableLength = prevEntries.length;
 
-    const isToolInvocationOnly = (message: ClaudeStreamMessage) => {
-      if (message.type !== 'assistant' || !message.message?.content) {
-        return false;
-      }
-      const contents = Array.isArray(message.message.content)
-        ? message.message.content
-        : [message.message.content];
-      if (contents.length === 0) return false;
-      return contents.every((content: any) => {
-        if (content.type === 'tool_use') return true;
-        if (content.type === 'thinking') return true;
-        if (content.type === 'text') {
-          const textValue = typeof content.text === 'string'
-            ? content.text
-            : content.text?.text ?? '';
-          return textValue.trim().length === 0;
+    const shouldRebuild = hideChanged || newCount < prevCount || replaced;
+
+    let updatedEntries: DisplayableEntry[] | null = null;
+    let rebuilt = false;
+
+    if (shouldRebuild) {
+      updatedEntries = buildDisplayableEntries(messages, hideToolMessages);
+      rebuilt = true;
+    } else if (newCount > prevCount) {
+      const nextEntries = prevEntries.slice();
+      let added = false;
+
+      for (let i = prevCount; i < newCount; i++) {
+        const message = messages[i];
+        if (shouldDisplayMessage(messages, message, i, hideToolMessages)) {
+          nextEntries.push({ message, originalIndex: i });
+          added = true;
         }
-        return false;
-      });
-    };
-
-    const shouldDisplay = (message: ClaudeStreamMessage, index: number) => {
-      if (message.isMeta && !message.leafUuid && !message.summary) {
-        return false;
       }
 
-      if (message.type === 'user' && message.message) {
-        if (message.isMeta) return false;
+      if (added) {
+        updatedEntries = nextEntries;
+      }
+    } else if (newCount === 0 && prevEntries.length !== 0) {
+      updatedEntries = [];
+      rebuilt = true;
+    }
 
-        const msg = message.message;
-        if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) {
-          return false;
-        }
+    if (updatedEntries) {
+      displayableEntriesRef.current = updatedEntries;
+      setDisplayableEntries(updatedEntries);
 
-        if (Array.isArray(msg.content)) {
-          let hasVisibleContent = false;
-          for (const content of msg.content) {
-            if (content.type === 'text') {
-              hasVisibleContent = true;
-              break;
-            }
-            if (content.type === 'tool_result') {
-              let willBeSkipped = false;
-              if (content.tool_use_id) {
-                for (let i = index - 1; i >= 0; i--) {
-                  const prevMsg = messages[i];
-                  if (prevMsg.type === 'assistant' && prevMsg.message?.content && Array.isArray(prevMsg.message.content)) {
-                    const toolUse = prevMsg.message.content.find((c: any) => c.type === 'tool_use' && c.id === content.tool_use_id);
-                    if (toolUse) {
-                      const toolName = toolUse.name?.toLowerCase();
-                      const toolsWithWidgets = [
-                        'task', 'edit', 'multiedit', 'todowrite', 'ls', 'read',
-                        'glob', 'bash', 'write', 'grep'
-                      ];
-                      if (toolsWithWidgets.includes(toolName) || toolUse.name?.startsWith('mcp__')) {
-                        willBeSkipped = true;
-                      }
-                      break;
-                    }
-                  }
-                }
-              }
-              if (!willBeSkipped) {
-                hasVisibleContent = true;
-                break;
-              }
-            }
+      if (rebuilt) {
+        const rebuiltOutline = updatedEntries.length > 0 ? buildOutlineItems(updatedEntries) : [];
+        outlineItemsRef.current = rebuiltOutline;
+        setOutlineItems(rebuiltOutline);
+      } else {
+        const appendedCount = updatedEntries.length - prevDisplayableLength;
+
+        if (appendedCount > 0) {
+          const baseIndex = updatedEntries.length - appendedCount;
+          const appendedOutline: OutlineItem[] = [];
+
+          for (let i = 0; i < appendedCount; i++) {
+            const entry = updatedEntries[baseIndex + i];
+            appendedOutline.push(...extractOutlineItemsFromEntry(entry, baseIndex + i));
           }
-          if (!hasVisibleContent) {
-            return false;
+
+          if (appendedOutline.length > 0) {
+            const nextOutline = outlineItemsRef.current.concat(appendedOutline);
+            outlineItemsRef.current = nextOutline;
+            setOutlineItems(nextOutline);
           }
         }
       }
-
-      if (hideToolMessages && isToolInvocationOnly(message)) {
-        return false;
+    } else if (rebuilt) {
+      if (outlineItemsRef.current.length > 0) {
+        outlineItemsRef.current = [];
+        setOutlineItems([]);
       }
+    }
 
-      return true;
-    };
-
-    messages.forEach((message, index) => {
-      if (shouldDisplay(message, index)) {
-        entries.push({ message, originalIndex: index });
+    if (!updatedEntries && shouldRebuild && displayableEntriesRef.current.length === 0) {
+      if (outlineItemsRef.current.length > 0) {
+        outlineItemsRef.current = [];
+        setOutlineItems([]);
       }
-    });
+    }
 
-    return entries;
+    prevMessagesCountRef.current = newCount;
+    prevHideToolRef.current = hideToolMessages;
+    lastMessagesSnapshotRef.current = messages;
   }, [messages, hideToolMessages]);
-
-  const outlineItems = useMemo<OutlineItem[]>(() => {
-    const items: OutlineItem[] = [];
-
-    displayableEntries.forEach((entry, displayIndex) => {
-      const { message, originalIndex } = entry;
-      if (message.type !== 'assistant' || !message.message?.content) {
-        return;
-      }
-
-      const contents = Array.isArray(message.message.content)
-        ? message.message.content
-        : [message.message.content];
-
-      const textBlocks = contents
-        .filter((content: any) => content.type === 'text')
-        .map((content: any) => {
-          if (typeof content.text === 'string') return content.text;
-          if (content.text?.text) return content.text.text;
-          return '';
-        })
-        .filter(Boolean);
-
-      if (textBlocks.length === 0) {
-        return;
-      }
-
-      const combined = textBlocks.join('\n');
-      const headingRegex = /^(#{1,6})\s+(.+)$/gm;
-      let match: RegExpExecArray | null;
-      let headingCount = 0;
-      while ((match = headingRegex.exec(combined)) !== null) {
-        headingCount += 1;
-        const level = Math.min(match[1].length, 6);
-        const rawLabel = match[2].trim();
-        const label = rawLabel.replace(/[#*`_>\-]/g, '').replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1').trim();
-        items.push({
-          id: `outline-${displayIndex}-${headingCount}`,
-          label: label || `Heading ${headingCount}`,
-          level,
-          displayIndex,
-          originalIndex,
-        });
-      }
-
-      if (headingCount === 0) {
-        const fallback = combined.trim().split('\n')[0] || '';
-        const label = fallback.substring(0, 80) || `Assistant message ${displayIndex + 1}`;
-        items.push({
-          id: `outline-${displayIndex}-fallback`,
-          label,
-          level: 1,
-          displayIndex,
-          originalIndex,
-        });
-      }
-    });
-
-    return items;
-  }, [displayableEntries]);
 
   useEffect(() => {
     if (showOutline && outlineItems.length === 0) {
@@ -542,8 +789,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         type: entry.type || "assistant"
       }));
       
-      setMessages(loadedMessages);
-      setRawJsonlOutput(history.map(h => JSON.stringify(h)));
+      replaceMessages(loadedMessages, history.map(h => JSON.stringify(h)));
       
       // After loading history, we're continuing a conversation
       setIsFirstPrompt(false);
@@ -636,9 +882,6 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
           return;
         }
 
-        // Store raw JSONL
-        setRawJsonlOutput(prev => [...prev, event.payload]);
-        
         // Parse and display
         const message = JSON.parse(event.payload) as ClaudeStreamMessage;
 
@@ -654,7 +897,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
         processedPayloads.add(event.payload);
         processedMessageIds.add(messageId);
-        setMessages(prev => [...prev, message]);
+        enqueueMessages([message], [event.payload]);
       } catch (err) {
         console.error("Failed to parse message:", err, event.payload);
       }
@@ -872,9 +1115,8 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             processedPayloads.add(payload);
             processedMessages.add(messageId);
 
-            // Store raw JSONL
-            setRawJsonlOutput((prev) => [...prev, payload]);
-            
+            enqueueMessages([message], [payload]);
+
             // Track enhanced tool execution
             if (message.type === 'assistant' && message.message?.content) {
               const toolUses = message.message.content.filter((c: any) => c.type === 'tool_use');
@@ -942,7 +1184,6 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               sessionMetrics.current.errorsEncountered += 1;
             }
             
-            setMessages((prev) => [...prev, message]);
           } catch (err) {
             console.error('Failed to parse message:', err, payload);
           }
@@ -1086,7 +1327,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             ]
           }
         };
-        setMessages(prev => [...prev, userMessage]);
+        enqueueMessages([userMessage]);
         
         // Update session metrics
         sessionMetrics.current.promptsSent += 1;
@@ -1383,7 +1624,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         result: "Session cancelled by user",
         timestamp: new Date().toISOString()
       };
-      setMessages(prev => [...prev, cancelMessage]);
+      enqueueMessages([cancelMessage]);
     } catch (err) {
       console.error("Failed to cancel execution:", err);
       
@@ -1395,7 +1636,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
         result: `Failed to cancel execution: ${err instanceof Error ? err.message : 'Unknown error'}. The process may still be running in the background.`,
         timestamp: new Date().toISOString()
       };
-      setMessages(prev => [...prev, errorMessage]);
+      enqueueMessages([errorMessage]);
       
       // Clean up listeners anyway
       unlistenRefs.current.forEach(unlisten => unlisten());
