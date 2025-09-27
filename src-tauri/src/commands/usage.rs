@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::command;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -129,12 +129,10 @@ fn calculate_cost(model: &str, usage: &UsageData) -> f64 {
         };
 
     // Calculate cost (prices are per million tokens)
-    let cost = (input_tokens * input_price / 1_000_000.0)
+    (input_tokens * input_price / 1_000_000.0)
         + (output_tokens * output_price / 1_000_000.0)
         + (cache_creation_tokens * cache_write_price / 1_000_000.0)
-        + (cache_read_tokens * cache_read_price / 1_000_000.0);
-
-    cost
+        + (cache_read_tokens * cache_read_price / 1_000_000.0)
 }
 
 fn parse_jsonl_file(
@@ -249,7 +247,7 @@ fn get_earliest_timestamp(path: &PathBuf) -> Option<String> {
     None
 }
 
-fn get_all_usage_entries(claude_path: &PathBuf) -> Vec<UsageEntry> {
+fn get_all_usage_entries(claude_path: &Path) -> Vec<UsageEntry> {
     let mut all_entries = Vec::new();
     let mut processed_hashes = HashSet::new();
     let projects_dir = claude_path.join("projects");
@@ -399,7 +397,7 @@ pub fn get_usage_stats(days: Option<u32>) -> Result<UsageStats, String> {
                     project_name: entry
                         .project_path
                         .split('/')
-                        .last()
+                        .next_back()
                         .unwrap_or(&entry.project_path)
                         .to_string(),
                     total_cost: 0.0,
@@ -569,7 +567,7 @@ pub fn get_usage_by_date_range(start_date: String, end_date: String) -> Result<U
                     project_name: entry
                         .project_path
                         .split('/')
-                        .last()
+                        .next_back()
                         .unwrap_or(&entry.project_path)
                         .to_string(),
                     total_cost: 0.0,
@@ -662,8 +660,8 @@ pub fn get_session_stats(
         .filter(|e| {
             if let Ok(dt) = DateTime::parse_from_rfc3339(&e.timestamp) {
                 let date = dt.date_naive();
-                let is_after_since = since_date.map_or(true, |s| date >= s);
-                let is_before_until = until_date.map_or(true, |u| date <= u);
+                let is_after_since = since_date.is_none_or(|s| date >= s);
+                let is_before_until = until_date.is_none_or(|u| date <= u);
                 is_after_since && is_before_until
             } else {
                 false

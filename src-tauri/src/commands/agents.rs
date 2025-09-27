@@ -179,7 +179,10 @@ pub async fn read_session_jsonl(session_id: &str, project_path: &str) -> Result<
     let session_file = project_dir.join(format!("{}.jsonl", session_id));
 
     if !session_file.exists() {
-        return Err(format!("Session file not found: {}", session_file.display()));
+        return Err(format!(
+            "Session file not found: {}",
+            session_file.display()
+        ));
     }
 
     match tokio::fs::read_to_string(&session_file).await {
@@ -317,7 +320,6 @@ pub fn init_database(app: &AppHandle) -> SqliteResult<Connection> {
         [],
     )?;
 
-
     // Create settings table for app-wide settings
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_settings (
@@ -379,28 +381,33 @@ pub async fn list_agents(db: State<'_, AgentDb>) -> Result<Vec<Agent>, String> {
 }
 
 /// Create a new agent
+#[derive(serde::Deserialize)]
+pub struct CreateAgentParams {
+    pub name: String,
+    pub icon: String,
+    pub system_prompt: String,
+    pub default_task: Option<String>,
+    pub model: Option<String>,
+    pub enable_file_read: Option<bool>,
+    pub enable_file_write: Option<bool>,
+    pub enable_network: Option<bool>,
+    pub hooks: Option<String>,
+}
+
 #[tauri::command]
 pub async fn create_agent(
     db: State<'_, AgentDb>,
-    name: String,
-    icon: String,
-    system_prompt: String,
-    default_task: Option<String>,
-    model: Option<String>,
-    enable_file_read: Option<bool>,
-    enable_file_write: Option<bool>,
-    enable_network: Option<bool>,
-    hooks: Option<String>,
+    params: CreateAgentParams,
 ) -> Result<Agent, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let model = model.unwrap_or_else(|| "sonnet".to_string());
-    let enable_file_read = enable_file_read.unwrap_or(true);
-    let enable_file_write = enable_file_write.unwrap_or(true);
-    let enable_network = enable_network.unwrap_or(false);
+    let model = params.model.unwrap_or_else(|| "sonnet".to_string());
+    let enable_file_read = params.enable_file_read.unwrap_or(true);
+    let enable_file_write = params.enable_file_write.unwrap_or(true);
+    let enable_network = params.enable_network.unwrap_or(false);
 
     conn.execute(
         "INSERT INTO agents (name, icon, system_prompt, default_task, model, enable_file_read, enable_file_write, enable_network, hooks) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![name, icon, system_prompt, default_task, model, enable_file_read, enable_file_write, enable_network, hooks],
+        params![params.name, params.icon, params.system_prompt, params.default_task, model, enable_file_read, enable_file_write, enable_network, params.hooks],
     )
     .map_err(|e| e.to_string())?;
 
@@ -434,48 +441,53 @@ pub async fn create_agent(
 }
 
 /// Update an existing agent
+#[derive(serde::Deserialize)]
+pub struct UpdateAgentParams {
+    pub id: i64,
+    pub name: String,
+    pub icon: String,
+    pub system_prompt: String,
+    pub default_task: Option<String>,
+    pub model: Option<String>,
+    pub enable_file_read: Option<bool>,
+    pub enable_file_write: Option<bool>,
+    pub enable_network: Option<bool>,
+    pub hooks: Option<String>,
+}
+
 #[tauri::command]
 pub async fn update_agent(
     db: State<'_, AgentDb>,
-    id: i64,
-    name: String,
-    icon: String,
-    system_prompt: String,
-    default_task: Option<String>,
-    model: Option<String>,
-    enable_file_read: Option<bool>,
-    enable_file_write: Option<bool>,
-    enable_network: Option<bool>,
-    hooks: Option<String>,
+    params: UpdateAgentParams,
 ) -> Result<Agent, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let model = model.unwrap_or_else(|| "sonnet".to_string());
+    let model = params.model.unwrap_or_else(|| "sonnet".to_string());
 
     // Build dynamic query based on provided parameters
     let mut query =
         "UPDATE agents SET name = ?1, icon = ?2, system_prompt = ?3, default_task = ?4, model = ?5, hooks = ?6"
             .to_string();
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
-        Box::new(name),
-        Box::new(icon),
-        Box::new(system_prompt),
-        Box::new(default_task),
+        Box::new(params.name),
+        Box::new(params.icon),
+        Box::new(params.system_prompt),
+        Box::new(params.default_task),
         Box::new(model),
-        Box::new(hooks),
+        Box::new(params.hooks),
     ];
     let mut param_count = 6;
 
-    if let Some(efr) = enable_file_read {
+    if let Some(efr) = params.enable_file_read {
         param_count += 1;
         query.push_str(&format!(", enable_file_read = ?{}", param_count));
         params_vec.push(Box::new(efr));
     }
-    if let Some(efw) = enable_file_write {
+    if let Some(efw) = params.enable_file_write {
         param_count += 1;
         query.push_str(&format!(", enable_file_write = ?{}", param_count));
         params_vec.push(Box::new(efw));
     }
-    if let Some(en) = enable_network {
+    if let Some(en) = params.enable_network {
         param_count += 1;
         query.push_str(&format!(", enable_network = ?{}", param_count));
         params_vec.push(Box::new(en));
@@ -483,7 +495,7 @@ pub async fn update_agent(
 
     param_count += 1;
     query.push_str(&format!(" WHERE id = ?{}", param_count));
-    params_vec.push(Box::new(id));
+    params_vec.push(Box::new(params.id));
 
     conn.execute(
         &query,
@@ -495,7 +507,7 @@ pub async fn update_agent(
     let agent = conn
         .query_row(
             "SELECT id, name, icon, system_prompt, default_task, model, enable_file_read, enable_file_write, enable_network, hooks, created_at, updated_at FROM agents WHERE id = ?1",
-            params![id],
+            params![params.id],
             |row| {
                 Ok(Agent {
                     id: Some(row.get(0)?),
@@ -690,38 +702,41 @@ pub async fn execute_agent(
     // Get the agent from database
     let agent = get_agent(db.clone(), agent_id).await?;
     let execution_model = model.unwrap_or(agent.model.clone());
-    
+
     // Create .claude/settings.json with agent hooks if it doesn't exist
     if let Some(hooks_json) = &agent.hooks {
         let claude_dir = std::path::Path::new(&project_path).join(".claude");
         let settings_path = claude_dir.join("settings.json");
-        
+
         // Create .claude directory if it doesn't exist
         if !claude_dir.exists() {
             std::fs::create_dir_all(&claude_dir)
                 .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
             info!("Created .claude directory at: {:?}", claude_dir);
         }
-        
+
         // Check if settings.json already exists
         if !settings_path.exists() {
             // Parse the hooks JSON
             let hooks: serde_json::Value = serde_json::from_str(hooks_json)
                 .map_err(|e| format!("Failed to parse agent hooks: {}", e))?;
-            
+
             // Create a settings object with just the hooks
             let settings = serde_json::json!({
                 "hooks": hooks
             });
-            
+
             // Write the settings file
             let settings_content = serde_json::to_string_pretty(&settings)
                 .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-            
+
             std::fs::write(&settings_path, settings_content)
                 .map_err(|e| format!("Failed to write settings.json: {}", e))?;
-            
-            info!("Created settings.json with agent hooks at: {:?}", settings_path);
+
+            info!(
+                "Created settings.json with agent hooks at: {:?}",
+                settings_path
+            );
         } else {
             info!("settings.json already exists at: {:?}", settings_path);
         }
@@ -763,19 +778,24 @@ pub async fn execute_agent(
     ];
 
     // Always use system binary execution (sidecar removed)
-    spawn_agent_system(
-        app,
+    let spawn_params = SpawnAgentParams {
         run_id,
         agent_id,
-        agent.name.clone(),
+        agent_name: agent.name.clone(),
         claude_path,
         args,
         project_path,
         task,
         execution_model,
+    };
+    
+    spawn_agent_system(
+        app,
+        spawn_params,
         db,
         registry,
-    ).await
+    )
+    .await
 }
 
 /// Creates a system binary command for agent execution
@@ -785,23 +805,22 @@ fn create_agent_system_command(
     project_path: &str,
 ) -> Command {
     let mut cmd = create_command_with_env(claude_path);
-    
+
     // Add all arguments
     for arg in args {
         cmd.arg(arg);
     }
-    
+
     cmd.current_dir(project_path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    
+
     cmd
 }
 
-/// Spawn agent using system binary command
-async fn spawn_agent_system(
-    app: AppHandle,
+#[derive(Clone)]
+struct SpawnAgentParams {
     run_id: i64,
     agent_id: i64,
     agent_name: String,
@@ -810,11 +829,17 @@ async fn spawn_agent_system(
     project_path: String,
     task: String,
     execution_model: String,
+}
+
+/// Spawn agent using system binary command
+async fn spawn_agent_system(
+    app: AppHandle,
+    params: SpawnAgentParams,
     db: State<'_, AgentDb>,
     registry: State<'_, crate::process::ProcessRegistryState>,
 ) -> Result<i64, String> {
     // Build the command
-    let mut cmd = create_agent_system_command(&claude_path, args, &project_path);
+    let mut cmd = create_agent_system_command(&params.claude_path, params.args, &params.project_path);
 
     // Spawn the process
     info!("🚀 Spawning Claude system process...");
@@ -835,7 +860,7 @@ async fn spawn_agent_system(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE agent_runs SET status = 'running', pid = ?1, process_started_at = ?2 WHERE id = ?3",
-            params![pid as i64, now, run_id],
+            params![pid as i64, now, params.run_id],
         ).map_err(|e| e.to_string())?;
         info!("📝 Updated database with running status and PID");
     }
@@ -900,32 +925,36 @@ async fn spawn_agent_system(
             }
 
             // Also store in process registry for cross-session access
-            let _ = registry_clone.append_live_output(run_id, &line);
+            let _ = registry_clone.append_live_output(params.run_id, &line);
 
             // Extract session ID from JSONL output
             if let Ok(json) = serde_json::from_str::<JsonValue>(&line) {
                 // Claude Code uses "session_id" (underscore), not "sessionId"
-                if json.get("type").and_then(|t| t.as_str()) == Some("system") &&
-                   json.get("subtype").and_then(|s| s.as_str()) == Some("init") {
+                if json.get("type").and_then(|t| t.as_str()) == Some("system")
+                    && json.get("subtype").and_then(|s| s.as_str()) == Some("init")
+                {
                     if let Some(sid) = json.get("session_id").and_then(|s| s.as_str()) {
                         if let Ok(mut current_session_id) = session_id_clone.lock() {
                             if current_session_id.is_empty() {
                                 *current_session_id = sid.to_string();
                                 info!("🔑 Extracted session ID: {}", sid);
-                                
+
                                 // Update database immediately with session ID
                                 if let Ok(conn) = Connection::open(&db_path_for_stdout) {
                                     match conn.execute(
                                         "UPDATE agent_runs SET session_id = ?1 WHERE id = ?2",
-                                        params![sid, run_id],
+                                        params![sid, params.run_id],
                                     ) {
                                         Ok(rows) => {
                                             if rows > 0 {
-                                                info!("✅ Updated agent run {} with session ID immediately", run_id);
+                                                info!("✅ Updated agent run {} with session ID immediately", params.run_id);
                                             }
                                         }
                                         Err(e) => {
-                                            error!("❌ Failed to update session ID immediately: {}", e);
+                                            error!(
+                                                "❌ Failed to update session ID immediately: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -936,7 +965,7 @@ async fn spawn_agent_system(
             }
 
             // Emit the line to the frontend with run_id for isolation
-            let _ = app_handle.emit(&format!("agent-output:{}", run_id), &line);
+            let _ = app_handle.emit(&format!("agent-output:{}", params.run_id), &line);
             // Also emit to the generic event for backward compatibility
             let _ = app_handle.emit("agent-output", &line);
         }
@@ -967,7 +996,7 @@ async fn spawn_agent_system(
 
             error!("stderr[{}]: {}", error_count, line);
             // Emit error lines to the frontend with run_id for isolation
-            let _ = app_handle_stderr.emit(&format!("agent-error:{}", run_id), &line);
+            let _ = app_handle_stderr.emit(&format!("agent-error:{}", params.run_id), &line);
             // Also emit to the generic event for backward compatibility
             let _ = app_handle_stderr.emit("agent-error", &line);
         }
@@ -983,18 +1012,19 @@ async fn spawn_agent_system(
     });
 
     // Register the process in the registry for live output tracking (after stdout/stderr setup)
+    let process_params = crate::process::registry::AgentProcessParams {
+        run_id: params.run_id,
+        agent_id: params.agent_id,
+        agent_name: params.agent_name.clone(),
+        pid,
+        project_path: params.project_path.clone(),
+        task: params.task.clone(),
+        model: params.execution_model.clone(),
+    };
+    
     registry
         .0
-        .register_process(
-            run_id,
-            agent_id,
-            agent_name,
-            pid,
-            project_path.clone(),
-            task.clone(),
-            execution_model.clone(),
-            child,
-        )
+        .register_process(process_params, child)
         .map_err(|e| format!("Failed to register process: {}", e))?;
     info!("📋 Registered process in registry");
 
@@ -1053,12 +1083,12 @@ async fn spawn_agent_system(
                 if let Ok(conn) = Connection::open(&db_path_for_monitor) {
                     let _ = conn.execute(
                         "UPDATE agent_runs SET status = 'failed', completed_at = CURRENT_TIMESTAMP WHERE id = ?1",
-                        params![run_id],
+                        params![params.run_id],
                     );
                 }
 
                 let _ = app.emit("agent-complete", false);
-                let _ = app.emit(&format!("agent-complete:{}", run_id), false);
+                let _ = app.emit(&format!("agent-complete:{}", params.run_id), false);
                 return;
             }
 
@@ -1085,33 +1115,39 @@ async fn spawn_agent_system(
 
         // Update the run record with session ID and mark as completed - open a new connection
         if let Ok(conn) = Connection::open(&db_path_for_monitor) {
-            info!("🔄 Updating database with extracted session ID: {}", extracted_session_id);
+            info!(
+                "🔄 Updating database with extracted session ID: {}",
+                extracted_session_id
+            );
             match conn.execute(
                 "UPDATE agent_runs SET session_id = ?1, status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?2",
-                params![extracted_session_id, run_id],
+                params![extracted_session_id, params.run_id],
             ) {
                 Ok(rows_affected) => {
                     if rows_affected > 0 {
-                        info!("✅ Successfully updated agent run {} with session ID: {}", run_id, extracted_session_id);
+                        info!("✅ Successfully updated agent run {} with session ID: {}", params.run_id, extracted_session_id);
                     } else {
-                        warn!("⚠️ No rows affected when updating agent run {} with session ID", run_id);
+                        warn!("⚠️ No rows affected when updating agent run {} with session ID", params.run_id);
                     }
                 }
                 Err(e) => {
-                    error!("❌ Failed to update agent run {} with session ID: {}", run_id, e);
+                    error!("❌ Failed to update agent run {} with session ID: {}", params.run_id, e);
                 }
             }
         } else {
-            error!("❌ Failed to open database to update session ID for run {}", run_id);
+            error!(
+                "❌ Failed to open database to update session ID for run {}",
+                params.run_id
+            );
         }
 
         // Cleanup will be handled by the cleanup_finished_processes function
 
         let _ = app.emit("agent-complete", true);
-        let _ = app.emit(&format!("agent-complete:{}", run_id), true);
+        let _ = app.emit(&format!("agent-complete:{}", params.run_id), true);
     });
 
-    Ok(run_id)
+    Ok(params.run_id)
 }
 
 /// List all currently running agent sessions
@@ -1162,10 +1198,8 @@ pub async fn list_running_sessions(
     // Cross-check with the process registry to ensure accuracy
     // Get actually running processes from the registry
     let registry_processes = registry.0.get_running_agent_processes()?;
-    let registry_run_ids: std::collections::HashSet<i64> = registry_processes
-        .iter()
-        .map(|p| p.run_id)
-        .collect();
+    let registry_run_ids: std::collections::HashSet<i64> =
+        registry_processes.iter().map(|p| p.run_id).collect();
 
     // Filter out any database entries that aren't actually running in the registry
     // This handles cases where processes crashed without updating the database
@@ -1358,7 +1392,7 @@ pub async fn get_session_output(
 
     // Find the correct project directory by searching for the session file
     let projects_dir = claude_dir.join("projects");
-    
+
     // Check if projects directory exists
     if !projects_dir.exists() {
         log::error!("Projects directory not found at: {:?}", projects_dir);
@@ -1367,15 +1401,18 @@ pub async fn get_session_output(
 
     // Search for the session file in all project directories
     let mut session_file_path = None;
-    log::info!("Searching for session file {} in all project directories", run.session_id);
-    
+    log::info!(
+        "Searching for session file {} in all project directories",
+        run.session_id
+    );
+
     if let Ok(entries) = std::fs::read_dir(&projects_dir) {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.is_dir() {
                 let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
                 log::debug!("Checking project directory: {}", dir_name);
-                
+
                 let potential_session_file = path.join(format!("{}.jsonl", run.session_id));
                 if potential_session_file.exists() {
                     log::info!("Found session file at: {:?}", potential_session_file);
@@ -1395,7 +1432,11 @@ pub async fn get_session_output(
         match tokio::fs::read_to_string(&session_path).await {
             Ok(content) => Ok(content),
             Err(e) => {
-                log::error!("Failed to read session file {}: {}", session_path.display(), e);
+                log::error!(
+                    "Failed to read session file {}: {}",
+                    session_path.display(),
+                    e
+                );
                 // Fallback to live output if file read fails
                 let live_output = registry.0.get_live_output(run_id)?;
                 Ok(live_output)
@@ -1403,7 +1444,10 @@ pub async fn get_session_output(
         }
     } else {
         // If session file not found, try the old method as fallback
-        log::warn!("Session file not found for {}, trying legacy method", run.session_id);
+        log::warn!(
+            "Session file not found for {}, trying legacy method",
+            run.session_id
+        );
         match read_session_jsonl(&run.session_id, &run.project_path).await {
             Ok(content) => Ok(content),
             Err(_) => {
@@ -1651,7 +1695,7 @@ fn create_command_with_env(program: &str) -> Command {
         if let Some(node_bin_dir) = std::path::Path::new(program).parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
             let node_bin_str = node_bin_dir.to_string_lossy();
-            if !current_path.contains(&node_bin_str.as_ref()) {
+            if !current_path.contains(node_bin_str.as_ref()) {
                 let new_path = format!("{}:{}", node_bin_str, current_path);
                 tokio_cmd.env("PATH", new_path);
             }
@@ -1916,7 +1960,7 @@ pub async fn load_agent_session_history(
         .join(".claude");
 
     let projects_dir = claude_dir.join("projects");
-    
+
     if !projects_dir.exists() {
         log::error!("Projects directory not found at: {:?}", projects_dir);
         return Err("Projects directory not found".to_string());
@@ -1924,15 +1968,18 @@ pub async fn load_agent_session_history(
 
     // Search for the session file in all project directories
     let mut session_file_path = None;
-    log::info!("Searching for session file {} in all project directories", session_id);
-    
+    log::info!(
+        "Searching for session file {} in all project directories",
+        session_id
+    );
+
     if let Ok(entries) = std::fs::read_dir(&projects_dir) {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.is_dir() {
                 let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
                 log::debug!("Checking project directory: {}", dir_name);
-                
+
                 let potential_session_file = path.join(format!("{}.jsonl", session_id));
                 if potential_session_file.exists() {
                     log::info!("Found session file at: {:?}", potential_session_file);
@@ -1954,11 +2001,9 @@ pub async fn load_agent_session_history(
         let reader = BufReader::new(file);
         let mut messages = Vec::new();
 
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                    messages.push(json);
-                }
+        for line in reader.lines().map_while(Result::ok) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                messages.push(json);
             }
         }
 

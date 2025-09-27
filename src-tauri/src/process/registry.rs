@@ -7,13 +7,8 @@ use tokio::process::Child;
 /// Type of process being tracked
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProcessType {
-    AgentRun {
-        agent_id: i64,
-        agent_name: String,
-    },
-    ClaudeSession {
-        session_id: String,
-    },
+    AgentRun { agent_id: i64, agent_name: String },
+    ClaudeSession { session_id: String },
 }
 
 /// Information about a running agent process
@@ -23,6 +18,18 @@ pub struct ProcessInfo {
     pub process_type: ProcessType,
     pub pid: u32,
     pub started_at: DateTime<Utc>,
+    pub project_path: String,
+    pub task: String,
+    pub model: String,
+}
+
+/// Parameters for registering a new agent process
+#[derive(Debug)]
+pub struct AgentProcessParams {
+    pub run_id: i64,
+    pub agent_id: i64,
+    pub agent_name: String,
+    pub pid: u32,
     pub project_path: String,
     pub task: String,
     pub model: String,
@@ -61,60 +68,54 @@ impl ProcessRegistry {
     /// Register a new running agent process
     pub fn register_process(
         &self,
-        run_id: i64,
-        agent_id: i64,
-        agent_name: String,
-        pid: u32,
-        project_path: String,
-        task: String,
-        model: String,
+        params: AgentProcessParams,
         child: Child,
     ) -> Result<(), String> {
         let process_info = ProcessInfo {
-            run_id,
-            process_type: ProcessType::AgentRun { agent_id, agent_name },
-            pid,
+            run_id: params.run_id,
+            process_type: ProcessType::AgentRun {
+                agent_id: params.agent_id,
+                agent_name: params.agent_name,
+            },
+            pid: params.pid,
             started_at: Utc::now(),
-            project_path,
-            task,
-            model,
+            project_path: params.project_path,
+            task: params.task,
+            model: params.model,
         };
 
-        self.register_process_internal(run_id, process_info, child)
+        self.register_process_internal(params.run_id, process_info, child)
     }
 
     /// Register a new running agent process using sidecar (similar to register_process but for sidecar children)
     #[allow(dead_code)]
     pub fn register_sidecar_process(
         &self,
-        run_id: i64,
-        agent_id: i64,
-        agent_name: String,
-        pid: u32,
-        project_path: String,
-        task: String,
-        model: String,
+        params: AgentProcessParams,
     ) -> Result<(), String> {
         let process_info = ProcessInfo {
-            run_id,
-            process_type: ProcessType::AgentRun { agent_id, agent_name },
-            pid,
+            run_id: params.run_id,
+            process_type: ProcessType::AgentRun {
+                agent_id: params.agent_id,
+                agent_name: params.agent_name,
+            },
+            pid: params.pid,
             started_at: Utc::now(),
-            project_path,
-            task,
-            model,
+            project_path: params.project_path,
+            task: params.task,
+            model: params.model,
         };
 
         // For sidecar processes, we register without the child handle since it's managed differently
         let mut processes = self.processes.lock().map_err(|e| e.to_string())?;
-        
+
         let process_handle = ProcessHandle {
             info: process_info,
             child: Arc::new(Mutex::new(None)), // No tokio::process::Child handle for sidecar
             live_output: Arc::new(Mutex::new(String::new())),
         };
 
-        processes.insert(run_id, process_handle);
+        processes.insert(params.run_id, process_handle);
         Ok(())
     }
 
@@ -128,7 +129,7 @@ impl ProcessRegistry {
         model: String,
     ) -> Result<i64, String> {
         let run_id = self.generate_id()?;
-        
+
         let process_info = ProcessInfo {
             run_id,
             process_type: ProcessType::ClaudeSession { session_id },
@@ -141,7 +142,7 @@ impl ProcessRegistry {
 
         // Register without child - Claude sessions use ClaudeProcessState for process management
         let mut processes = self.processes.lock().map_err(|e| e.to_string())?;
-        
+
         let process_handle = ProcessHandle {
             info: process_info,
             child: Arc::new(Mutex::new(None)), // No child handle for Claude sessions
@@ -176,25 +177,24 @@ impl ProcessRegistry {
         let processes = self.processes.lock().map_err(|e| e.to_string())?;
         Ok(processes
             .values()
-            .filter_map(|handle| {
-                match &handle.info.process_type {
-                    ProcessType::ClaudeSession { .. } => Some(handle.info.clone()),
-                    _ => None,
-                }
+            .filter_map(|handle| match &handle.info.process_type {
+                ProcessType::ClaudeSession { .. } => Some(handle.info.clone()),
+                _ => None,
             })
             .collect())
     }
 
     /// Get a specific Claude session by session ID
-    pub fn get_claude_session_by_id(&self, session_id: &str) -> Result<Option<ProcessInfo>, String> {
+    pub fn get_claude_session_by_id(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ProcessInfo>, String> {
         let processes = self.processes.lock().map_err(|e| e.to_string())?;
         Ok(processes
             .values()
-            .find(|handle| {
-                match &handle.info.process_type {
-                    ProcessType::ClaudeSession { session_id: sid } => sid == session_id,
-                    _ => false,
-                }
+            .find(|handle| match &handle.info.process_type {
+                ProcessType::ClaudeSession { session_id: sid } => sid == session_id,
+                _ => false,
             })
             .map(|handle| handle.info.clone()))
     }
@@ -222,11 +222,9 @@ impl ProcessRegistry {
         let processes = self.processes.lock().map_err(|e| e.to_string())?;
         Ok(processes
             .values()
-            .filter_map(|handle| {
-                match &handle.info.process_type {
-                    ProcessType::AgentRun { .. } => Some(handle.info.clone()),
-                    _ => None,
-                }
+            .filter_map(|handle| match &handle.info.process_type {
+                ProcessType::AgentRun { .. } => Some(handle.info.clone()),
+                _ => None,
             })
             .collect())
     }
@@ -274,17 +272,26 @@ impl ProcessRegistry {
                     }
                 }
             } else {
-                warn!("No child handle available for process {} (PID: {}), attempting system kill", run_id, pid);
+                warn!(
+                    "No child handle available for process {} (PID: {}), attempting system kill",
+                    run_id, pid
+                );
                 false // Process handle not available, try fallback
             }
         };
 
         // If direct kill didn't work, try system command as fallback
         if !kill_sent {
-            info!("Attempting fallback kill for process {} (PID: {})", run_id, pid);
+            info!(
+                "Attempting fallback kill for process {} (PID: {})",
+                run_id, pid
+            );
             match self.kill_process_by_pid(run_id, pid) {
                 Ok(true) => return Ok(true),
-                Ok(false) => warn!("Fallback kill also failed for process {} (PID: {})", run_id, pid),
+                Ok(false) => warn!(
+                    "Fallback kill also failed for process {} (PID: {})",
+                    run_id, pid
+                ),
                 Err(e) => error!("Error during fallback kill: {}", e),
             }
             // Continue with the rest of the cleanup even if fallback failed
@@ -484,34 +491,42 @@ impl ProcessRegistry {
         }
     }
 
-    /// Cleanup finished processes
+    /// Clean up finished processes from the registry
     #[allow(dead_code)]
-    pub async fn cleanup_finished_processes(&self) -> Result<Vec<i64>, String> {
-        let mut finished_runs = Vec::new();
-        let processes_lock = self.processes.clone();
+    pub async fn cleanup_finished_processes(&self) {
+        let to_remove = {
+            let processes = self.processes.lock().unwrap();
+            let mut to_remove = Vec::new();
 
-        // First, identify finished processes
-        {
-            let processes = processes_lock.lock().map_err(|e| e.to_string())?;
-            let run_ids: Vec<i64> = processes.keys().cloned().collect();
-            drop(processes);
-
-            for run_id in run_ids {
-                if !self.is_process_running(run_id).await? {
-                    finished_runs.push(run_id);
+            for (run_id, handle) in processes.iter() {
+                if let Ok(mut child_guard) = handle.child.lock() {
+                    if let Some(child) = child_guard.as_mut() {
+                        match child.try_wait() {
+                            Ok(Some(_)) => {
+                                // Process has finished
+                                to_remove.push(*run_id);
+                            }
+                            Ok(None) => {
+                                // Process is still running
+                            }
+                            Err(e) => {
+                                eprintln!("Error checking process status: {}", e);
+                                to_remove.push(*run_id);
+                            }
+                        }
+                    }
                 }
             }
-        }
+            to_remove
+        };
 
-        // Then remove them from the registry
-        {
-            let mut processes = processes_lock.lock().map_err(|e| e.to_string())?;
-            for run_id in &finished_runs {
-                processes.remove(run_id);
+        // Remove finished processes
+        if !to_remove.is_empty() {
+            let mut processes = self.processes.lock().unwrap();
+            for run_id in to_remove {
+                processes.remove(&run_id);
             }
         }
-
-        Ok(finished_runs)
     }
 }
 
