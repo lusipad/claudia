@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTabContext } from '@/contexts/TabContext';
 import { Tab } from '@/contexts/TabContext';
 
@@ -41,6 +42,7 @@ interface UseTabStateReturn {
 }
 
 export const useTabState = (): UseTabStateReturn => {
+  const { t } = useTranslation();
   const {
     tabs,
     activeTabId,
@@ -96,12 +98,12 @@ export const useTabState = (): UseTabStateReturn => {
     // Allow multiple projects tabs
     return addTab({
       type: 'projects',
-      title: 'Projects',
+      title: t('projects.title'),
       status: 'idle',
       hasUnsavedChanges: false,
       icon: 'folder'
     });
-  }, [addTab]);
+  }, [addTab, t]);
 
   const createAgentsTab = useCallback((): string | null => {
     // Check if agents tab already exists (singleton)
@@ -113,12 +115,12 @@ export const useTabState = (): UseTabStateReturn => {
 
     return addTab({
       type: 'agents',
-      title: 'Agents',
+      title: t('agents.title'),
       status: 'idle',
       hasUnsavedChanges: false,
       icon: 'bot'
     });
-  }, [addTab, tabs, setActiveTab]);
+  }, [addTab, tabs, setActiveTab, t]);
 
   const createUsageTab = useCallback((): string | null => {
     // Check if usage tab already exists (singleton)
@@ -130,12 +132,12 @@ export const useTabState = (): UseTabStateReturn => {
 
     return addTab({
       type: 'usage',
-      title: 'Usage',
+      title: t('usage.title'),
       status: 'idle',
       hasUnsavedChanges: false,
       icon: 'bar-chart'
     });
-  }, [addTab, tabs, setActiveTab]);
+  }, [addTab, tabs, setActiveTab, t]);
 
   const createMCPTab = useCallback((): string | null => {
     // Check if MCP tab already exists (singleton)
@@ -147,12 +149,12 @@ export const useTabState = (): UseTabStateReturn => {
 
     return addTab({
       type: 'mcp',
-      title: 'MCP Servers',
+      title: t('mcp.title'),
       status: 'idle',
       hasUnsavedChanges: false,
       icon: 'server'
     });
-  }, [addTab, tabs, setActiveTab]);
+  }, [addTab, tabs, setActiveTab, t]);
 
   const createSettingsTab = useCallback((): string | null => {
     // Check if settings tab already exists (singleton)
@@ -164,12 +166,12 @@ export const useTabState = (): UseTabStateReturn => {
 
     return addTab({
       type: 'settings',
-      title: 'Settings',
+      title: t('settings.title'),
       status: 'idle',
       hasUnsavedChanges: false,
       icon: 'settings'
     });
-  }, [addTab, tabs, setActiveTab]);
+  }, [addTab, tabs, setActiveTab, t]);
 
   const createClaudeMdTab = useCallback((): string | null => {
     // Check if claude-md tab already exists (singleton)

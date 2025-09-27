@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { 
   Plus, 
   Trash2, 
@@ -92,6 +93,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
   className,
   scopeFilter = 'all',
 }) => {
+  const { t } = useTranslation();
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -133,7 +135,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
       setCommands(loadedCommands);
     } catch (err) {
       console.error("Failed to load slash commands:", err);
-      setError("Failed to load commands");
+      setError(t('settings.commands.loadError'));
     } finally {
       setLoading(false);
     }
@@ -190,7 +192,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
       await loadCommands();
     } catch (err) {
       console.error("Failed to save command:", err);
-      setError(err instanceof Error ? err.message : "Failed to save command");
+      setError(err instanceof Error ? err.message : t('settings.commands.saveError'));
     } finally {
       setSaving(false);
     }
@@ -213,7 +215,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
       await loadCommands();
     } catch (err) {
       console.error("Failed to delete command:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete command";
+      const errorMessage = err instanceof Error ? err.message : t('settings.commands.deleteError');
       setError(errorMessage);
     } finally {
       setDeleting(false);
@@ -289,9 +291,9 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
 
   // Group commands by namespace and scope
   const groupedCommands = filteredCommands.reduce((acc, cmd) => {
-    const key = cmd.namespace 
-      ? `${cmd.namespace} (${cmd.scope})` 
-      : `${cmd.scope === 'project' ? 'Project' : 'User'} Commands`;
+    const key = cmd.namespace
+      ? `${cmd.namespace} (${cmd.scope})`
+      : `${cmd.scope === 'project' ? t('settings.commands.projectCommands') : t('settings.commands.userCommands')}`;
     if (!acc[key]) {
       acc[key] = [];
     }
@@ -305,17 +307,17 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">
-            {scopeFilter === 'project' ? 'Project Slash Commands' : 'Slash Commands'}
+            {scopeFilter === 'project' ? t('settings.commands.projectTitle') : t('settings.commands.title')}
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            {scopeFilter === 'project' 
-              ? 'Create custom commands for this project' 
-              : 'Create custom commands to streamline your workflow'}
+            {scopeFilter === 'project'
+              ? t('settings.commands.projectSubtitle')
+              : t('settings.commands.subtitle')}
           </p>
         </div>
         <Button onClick={handleCreateNew} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
-          New Command
+          {t('settings.commands.newCommand')}
         </Button>
       </div>
 
@@ -325,7 +327,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search commands..."
+              placeholder={t('settings.commands.searchCommands')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -338,9 +340,9 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Commands</SelectItem>
-              <SelectItem value="project">Project</SelectItem>
-              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="all">{t('settings.commands.allCommands')}</SelectItem>
+              <SelectItem value="project">{t('settings.commands.project')}</SelectItem>
+              <SelectItem value="user">{t('settings.commands.user')}</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -364,17 +366,17 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
           <div className="text-center">
             <Command className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-sm text-muted-foreground">
-              {searchQuery 
-                ? "No commands found" 
-                : scopeFilter === 'project' 
-                  ? "No project commands created yet" 
-                  : "No commands created yet"}
+              {searchQuery
+                ? t('settings.commands.noCommands')
+                : scopeFilter === 'project'
+                  ? t('settings.commands.noProjectCommands')
+                  : t('settings.commands.noCommandsCreated')}
             </p>
             {!searchQuery && (
               <Button onClick={handleCreateNew} variant="outline" size="sm" className="mt-4">
-                {scopeFilter === 'project' 
-                  ? "Create your first project command" 
-                  : "Create your first command"}
+                {scopeFilter === 'project'
+                  ? t('settings.commands.createFirstProject')
+                  : t('settings.commands.createFirst')}
               </Button>
             )}
           </div>
@@ -407,7 +409,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                               </code>
                               {command.accepts_arguments && (
                                 <Badge variant="secondary" className="text-xs">
-                                  Arguments
+                                  {t('settings.commands.arguments')}
                                 </Badge>
                               )}
                             </div>
@@ -421,19 +423,19 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                             <div className="flex items-center gap-4 text-xs">
                               {command.allowed_tools.length > 0 && (
                                 <span className="text-muted-foreground">
-                                  {command.allowed_tools.length} tool{command.allowed_tools.length === 1 ? '' : 's'}
+                                  {command.allowed_tools.length} {command.allowed_tools.length === 1 ? t('settings.commands.tools') : t('settings.commands.toolsPlural')}
                                 </span>
                               )}
                               
                               {command.has_bash_commands && (
                                 <Badge variant="outline" className="text-xs">
-                                  Bash
+                                  {t('settings.commands.bash')}
                                 </Badge>
                               )}
                               
                               {command.has_file_references && (
                                 <Badge variant="outline" className="text-xs">
-                                  Files
+                                  {t('settings.commands.files')}
                                 </Badge>
                               )}
                               
@@ -444,12 +446,12 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                                 {isExpanded ? (
                                   <>
                                     <ChevronDown className="h-3 w-3" />
-                                    Hide content
+                                    {t('settings.commands.hideContent')}
                                   </>
                                 ) : (
                                   <>
                                     <ChevronRight className="h-3 w-3" />
-                                    Show content
+                                    {t('settings.commands.showContent')}
                                   </>
                                 )}
                               </button>
@@ -508,14 +510,14 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingCommand ? "Edit Command" : "Create New Command"}
+              {editingCommand ? t('settings.commands.editCommand') : t('settings.commands.createNewCommand')}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {/* Scope */}
             <div className="space-y-2">
-              <Label>Scope</Label>
+              <Label>{t('settings.commands.scope')}</Label>
               <Select 
                 value={commandForm.scope} 
                 onValueChange={(value: 'project' | 'user') => setCommandForm(prev => ({ ...prev, scope: value }))}
@@ -529,7 +531,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                     <SelectItem value="user">
                       <div className="flex items-center gap-2">
                         <Globe className="h-4 w-4" />
-                        User (Global)
+                        {t('settings.commands.userGlobal')}
                       </div>
                     </SelectItem>
                   )}
@@ -537,34 +539,34 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                     <SelectItem value="project" disabled={!projectPath}>
                       <div className="flex items-center gap-2">
                         <FolderOpen className="h-4 w-4" />
-                        Project
+                        {t('settings.commands.project')}
                       </div>
                     </SelectItem>
                   )}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {commandForm.scope === 'user' 
-                  ? "Available across all projects" 
-                  : "Only available in this project"}
+                {commandForm.scope === 'user'
+                  ? t('settings.commands.userScope')
+                  : t('settings.commands.projectScope')}
               </p>
             </div>
 
             {/* Name and Namespace */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Command Name*</Label>
+                <Label>{t('settings.commands.commandName')}*</Label>
                 <Input
-                  placeholder="e.g., review, fix-issue"
+                  placeholder={t('settings.commands.commandNamePlaceholder')}
                   value={commandForm.name}
                   onChange={(e) => setCommandForm(prev => ({ ...prev, name: e.target.value }))}
                 />
               </div>
               
               <div className="space-y-2">
-                <Label>Namespace (Optional)</Label>
+                <Label>{t('settings.commands.namespace')}</Label>
                 <Input
-                  placeholder="e.g., frontend, backend"
+                  placeholder={t('settings.commands.namespacePlaceholder')}
                   value={commandForm.namespace}
                   onChange={(e) => setCommandForm(prev => ({ ...prev, namespace: e.target.value }))}
                 />
@@ -573,9 +575,9 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
 
             {/* Description */}
             <div className="space-y-2">
-              <Label>Description (Optional)</Label>
+              <Label>{t('settings.commands.description')}</Label>
               <Input
-                placeholder="Brief description of what this command does"
+                placeholder={t('settings.commands.descriptionPlaceholder')}
                 value={commandForm.description}
                 onChange={(e) => setCommandForm(prev => ({ ...prev, description: e.target.value }))}
               />
@@ -583,22 +585,21 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
 
             {/* Content */}
             <div className="space-y-2">
-              <Label>Command Content*</Label>
+              <Label>{t('settings.commands.commandContent')}*</Label>
               <Textarea
-                placeholder="Enter the prompt content. Use $ARGUMENTS for dynamic values."
+                placeholder={t('settings.commands.contentPlaceholder')}
                 value={commandForm.content}
                 onChange={(e) => setCommandForm(prev => ({ ...prev, content: e.target.value }))}
                 className="min-h-[150px] font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                Use <code>$ARGUMENTS</code> for user input, <code>@filename</code> for files, 
-                and <code>!`command`</code> for bash commands
+                {t('settings.commands.contentHelp')}
               </p>
             </div>
 
             {/* Allowed Tools */}
             <div className="space-y-2">
-              <Label>Allowed Tools</Label>
+              <Label>{t('settings.commands.allowedTools')}</Label>
               <div className="flex flex-wrap gap-2">
                 {COMMON_TOOL_MATCHERS.map((tool) => (
                   <Button
@@ -613,14 +614,14 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Select which tools Claude can use with this command
+                {t('settings.commands.allowedToolsHelp')}
               </p>
             </div>
 
             {/* Examples */}
             {!editingCommand && (
               <div className="space-y-2">
-                <Label>Examples</Label>
+                <Label>{t('settings.commands.examples')}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {EXAMPLE_COMMANDS.map((example) => (
                     <Button
@@ -641,7 +642,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
             {/* Preview */}
             {commandForm.name && (
               <div className="space-y-2">
-                <Label>Preview</Label>
+                <Label>{t('settings.commands.preview')}</Label>
                 <div className="p-3 bg-muted rounded-md">
                   <code className="text-sm">
                     /
@@ -656,7 +657,7 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {t('settings.commands.cancel')}
             </Button>
             <Button
               onClick={handleSave}
@@ -665,12 +666,12 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  {t('settings.commands.saving')}
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4 mr-2" />
-                  Save
+                  {t('settings.commands.save')}
                 </>
               )}
             </Button>
@@ -682,11 +683,11 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Command</DialogTitle>
+            <DialogTitle>{t('settings.commands.deleteCommand')}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <p>Are you sure you want to delete this command?</p>
+            <p>{t('settings.commands.deleteConfirm')}</p>
             {commandToDelete && (
               <div className="p-3 bg-muted rounded-md">
                 <code className="text-sm font-mono">{commandToDelete.full_command}</code>
@@ -696,13 +697,13 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
               </div>
             )}
             <p className="text-sm text-muted-foreground">
-              This action cannot be undone. The command file will be permanently deleted.
+              {t('settings.commands.deleteWarning')}
             </p>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={cancelDelete} disabled={deleting}>
-              Cancel
+              {t('settings.commands.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -712,12 +713,12 @@ export const SlashCommandsManager: React.FC<SlashCommandsManagerProps> = ({
               {deleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
+                  {t('settings.commands.deleting')}
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
+                  {t('settings.commands.delete')}
                 </>
               )}
             </Button>
