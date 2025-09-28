@@ -85,7 +85,7 @@ export const SlashCommandPicker: React.FC<SlashCommandPickerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [activeTab, setActiveTab] = useState<string>("custom");
+  const [activeTab, setActiveTab] = useState<string>("default");
   
   const commandListRef = useRef<HTMLDivElement>(null);
   
@@ -105,17 +105,13 @@ export const SlashCommandPicker: React.FC<SlashCommandPickerProps> = ({
       return;
     }
     
-    const query = searchQuery.toLowerCase();
-    let filteredByTab: SlashCommand[];
-    
-    // Filter by active tab
-    if (activeTab === "default") {
-      // Show default/built-in commands
-      filteredByTab = commands.filter(cmd => cmd.scope === "default");
-    } else {
-      // Show all custom commands (both user and project)
-      filteredByTab = commands.filter(cmd => cmd.scope !== "default");
-    }
+    const query = (searchQuery || '').toLowerCase().trim();
+    // When searching, consider all commands regardless of tab
+    const filteredByTab: SlashCommand[] = query
+      ? commands
+      : (activeTab === 'default'
+          ? commands.filter(cmd => cmd.scope === 'default')
+          : commands.filter(cmd => cmd.scope !== 'default'));
     
     // Then filter by search query
     let filtered: SlashCommand[];
@@ -158,6 +154,7 @@ export const SlashCommandPicker: React.FC<SlashCommandPickerProps> = ({
     }
     
     setFilteredCommands(filtered);
+    setSelectedIndex(prev => filtered.length === 0 ? 0 : Math.min(prev, filtered.length - 1));
     
     // Reset selected index when filtered list changes
     setSelectedIndex(0);
