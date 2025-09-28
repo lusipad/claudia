@@ -255,7 +255,7 @@ const extractOutlineItemsFromEntry = (
       .trim();
 
     items.push({
-      id: `outline-${displayIndex}-${headingCount}`,
+      id: `outline-o${originalIndex}-${headingCount}`,
       label: label || `Heading ${headingCount}`,
       level,
       displayIndex,
@@ -268,7 +268,7 @@ const extractOutlineItemsFromEntry = (
     const label = fallback.substring(0, 80) || `Assistant message ${displayIndex + 1}`;
 
     items.push({
-      id: `outline-${displayIndex}-fallback`,
+      id: `outline-o${originalIndex}-fallback`,
       label,
       level: 1,
       displayIndex,
@@ -1648,11 +1648,35 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     sessionMetrics.current.checkpointCount += 1;
   };
 
-  const handleOutlineNavigate = (displayIndex: number) => {
-    rowVirtualizer.scrollToIndex(displayIndex, { align: 'start', behavior: 'smooth' });
-    if (!isDesktop) {
-      setShowOutline(false);
+  const handleOutlineNavigate = (item: OutlineItem) => {
+    const container = parentRef.current;
+    const tryScrollToAnchor = () => {
+      if (!container) return false;
+      const anchor = document.getElementById(item.id);
+      if (!anchor) return false;
+      const cRect = container.getBoundingClientRect();
+      const aRect = anchor.getBoundingClientRect();
+      const offsetTop = (container.scrollTop || 0) + (aRect.top - cRect.top) - 12; // padding
+      if (typeof rowVirtualizer.scrollToOffset === 'function') {
+        rowVirtualizer.scrollToOffset(offsetTop, { behavior: 'smooth' });
+      } else {
+        container.scrollTo({ top: offsetTop, behavior: 'smooth' });
+      }
+      return true;
+    };
+
+    // First try direct anchor scroll (if already mounted in view)
+    if (tryScrollToAnchor()) {
+      if (!isDesktop) setShowOutline(false);
+      return;
     }
+
+    // Otherwise, scroll the message into view, then attempt to snap to anchor
+    rowVirtualizer.scrollToIndex(item.displayIndex, { align: 'start', behavior: 'smooth' });
+    setTimeout(() => {
+      tryScrollToAnchor();
+    }, 60);
+    if (!isDesktop) setShowOutline(false);
   };
 
   const persistChatZoom = (value: number) => {
@@ -2001,6 +2025,8 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   streamMessages={messages}
                   onLinkDetected={handleLinkDetected}
                   fontScale={chatZoom}
+                  displayIndex={virtualItem.index}
+                  originalIndex={displayableEntries[virtualItem.index]?.originalIndex}
                 />
               </motion.div>
             );
@@ -2580,7 +2606,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       {outlineItems.map((item) => (
                         <button
                           key={item.id}
-                          onClick={() => handleOutlineNavigate(item.displayIndex)}
+                        onClick={() => handleOutlineNavigate(item)}
                           className="w-full text-left px-2 py-1 rounded-md hover:bg-accent text-sm transition-colors"
                           style={{ paddingLeft: `${Math.min(item.level - 1, 5) * 12 + 8}px` }}
                         >

@@ -46,6 +46,8 @@ interface StreamMessageProps {
   streamMessages: ClaudeStreamMessage[];
   onLinkDetected?: (url: string) => void;
   fontScale?: number;
+  displayIndex?: number;
+  originalIndex?: number;
 }
 
 /**
@@ -57,6 +59,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
   streamMessages,
   onLinkDetected,
   fontScale = 1,
+  originalIndex,
 }) => {
   // State to track tool results mapped by tool call ID
   const [toolResults, setToolResults] = useState<Map<string, any>>(new Map());
@@ -182,6 +185,9 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
       
       let renderedSomething = false;
       
+      // Counter to tag markdown headings with deterministic anchors for outline navigation
+      let headingOrdinal = 0;
+
       const renderedCard = (
         <Card className={cn("border-primary/20 bg-primary/5", className)}>
           <CardContent className="p-4">
@@ -222,7 +228,25 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                                   {children}
                                 </code>
                               );
-                            }
+                            },
+                            h1: ({ children, ...p }: any) => (
+                              <h1 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h1>
+                            ),
+                            h2: ({ children, ...p }: any) => (
+                              <h2 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h2>
+                            ),
+                            h3: ({ children, ...p }: any) => (
+                              <h3 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h3>
+                            ),
+                            h4: ({ children, ...p }: any) => (
+                              <h4 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h4>
+                            ),
+                            h5: ({ children, ...p }: any) => (
+                              <h5 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h5>
+                            ),
+                            h6: ({ children, ...p }: any) => (
+                              <h6 id={originalIndex !== undefined ? `outline-o${originalIndex}-${++headingOrdinal}` : undefined} {...p}>{children}</h6>
+                            ),
                           }}
                         >
                           {textContent}
