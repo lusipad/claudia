@@ -200,9 +200,6 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                 ? content.text 
                 : (content.text?.text || JSON.stringify(content.text || content));
               markdown += `${textContent}\n\n`;
-            } else if (content.type === "tool_use") {
-              markdown += `### Tool: ${content.name}\n\n`;
-              markdown += "```json\n" + JSON.stringify(content.input, null, 2) + "\n```\n\n";
             }
           }
         } else if (msg.type === "user" && msg.message) {
@@ -240,6 +237,14 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
           console.error('Copy message failed', e);
         }
       };
+
+      const hasAssistantText = Array.isArray(msg.content) && msg.content.some((content: any) => {
+        if (content.type !== 'text') return false;
+        const textContent = typeof content.text === 'string'
+          ? content.text
+          : (content.text?.text || '');
+        return String(textContent).trim().length > 0;
+      });
 
       const renderedCard = (
         <Card className={cn("border-primary/20 bg-primary/5", className)}>
@@ -466,17 +471,19 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                 })}
 
                 {msg.usage && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Tokens: {msg.usage.input_tokens} in, {msg.usage.output_tokens} out
+                  <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between">
+                    <span>
+                      Tokens: {msg.usage.input_tokens} in, {msg.usage.output_tokens} out
+                    </span>
+                    {hasAssistantText && (
+                      <TooltipSimple content="Copy message (Markdown)" side="top">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 ml-2" onClick={copyThisMessage}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipSimple>
+                    )}
                   </div>
                 )}
-              </div>
-              <div className="ml-2">
-                <TooltipSimple content="Copy message (Markdown)" side="top">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyThisMessage}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipSimple>
               </div>
             </div>
           </CardContent>
@@ -497,36 +504,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
       
       let renderedSomething = false;
       
-      const buildUserMarkdown = (msg: ClaudeStreamMessage): string => {
-        let md = '';
-        const m = msg.message || msg;
-        if (m && Array.isArray(m.content)) {
-          for (const content of m.content) {
-            if (content.type === 'text') {
-              const text = typeof content.text === 'string' ? content.text : String(content.text || '');
-              md += `${text}\n\n`;
-            } else if (content.type === 'tool_result') {
-              const c = content.content;
-              let text = '';
-              if (typeof c === 'string') text = c;
-              else if (Array.isArray(c)) text = c.map((x: any) => (typeof x === 'string' ? x : x.text || JSON.stringify(x))).join('\n');
-              else if (c?.text) text = c.text;
-              else text = JSON.stringify(c || {}, null, 2);
-              md += `### Tool Result\n\n\`\`\`\n${text}\n\`\`\`\n\n`;
-            }
-          }
-        }
-        return md || JSON.stringify(msg, null, 2);
-      };
-
-      const copyUserMessage = async () => {
-        try {
-          const md = buildUserMarkdown(message);
-          await navigator.clipboard.writeText(md);
-        } catch (e) {
-          console.error('Copy message failed', e);
-        }
-      };
+      // Note: user messages currently do not render a per-message copy button here.
 
       const renderedCard = (
         <Card className={cn("border-muted-foreground/20 bg-muted/20", className)}>
@@ -829,13 +807,6 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                   
                   return null;
                 })}
-              </div>
-              <div className="ml-2">
-                <TooltipSimple content="Copy message (Markdown)" side="top">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyUserMessage}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipSimple>
               </div>
             </div>
           </CardContent>
