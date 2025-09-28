@@ -4,7 +4,8 @@ import {
   User, 
   Bot, 
   AlertCircle, 
-  CheckCircle2
+  CheckCircle2,
+  Copy
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,8 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { getClaudeSyntaxTheme } from "@/lib/claudeSyntaxTheme";
 import { useTheme } from "@/hooks";
 import type { ClaudeStreamMessage } from "./AgentExecution";
+import { Button } from "@/components/ui/button";
+import { TooltipSimple } from "@/components/ui/tooltip-modern";
 import {
   TodoWidget,
   TodoReadWidget,
@@ -187,6 +190,56 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
       
       // Counter to tag markdown headings with deterministic anchors for outline navigation
       let headingOrdinal = 0;
+
+      const buildMarkdownForMessage = (msg: ClaudeStreamMessage): string => {
+        let markdown = "";
+        if (msg.type === "assistant" && msg.message) {
+          for (const content of msg.message.content || []) {
+            if (content.type === "text") {
+              const textContent = typeof content.text === 'string' 
+                ? content.text 
+                : (content.text?.text || JSON.stringify(content.text || content));
+              markdown += `${textContent}\n\n`;
+            } else if (content.type === "tool_use") {
+              markdown += `### Tool: ${content.name}\n\n`;
+              markdown += "```json\n" + JSON.stringify(content.input, null, 2) + "\n```\n\n";
+            }
+          }
+        } else if (msg.type === "user" && msg.message) {
+          for (const content of msg.message.content || []) {
+            if (content.type === "text") {
+              const textContent = typeof content.text === 'string' ? content.text : String(content.text || '');
+              markdown += `${textContent}\n\n`;
+            } else if (content.type === "tool_result") {
+              let contentText = '';
+              if (typeof content.content === 'string') {
+                contentText = content.content;
+              } else if (content.content && typeof content.content === 'object') {
+                if (content.content.text) {
+                  contentText = content.content.text;
+                } else if (Array.isArray(content.content)) {
+                  contentText = content.content
+                    .map((c: any) => (typeof c === 'string' ? c : c.text || JSON.stringify(c)))
+                    .join('\n');
+                } else {
+                  contentText = JSON.stringify(content.content, null, 2);
+                }
+              }
+              markdown += `### Tool Result\n\n\`\`\`\n${contentText}\n\`\`\`\n\n`;
+            }
+          }
+        }
+        return markdown || JSON.stringify(msg, null, 2);
+      };
+
+      const copyThisMessage = async () => {
+        try {
+          const md = buildMarkdownForMessage(message);
+          await navigator.clipboard.writeText(md);
+        } catch (e) {
+          console.error('Copy message failed', e);
+        }
+      };
 
       const renderedCard = (
         <Card className={cn("border-primary/20 bg-primary/5", className)}>
@@ -411,12 +464,19 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                   
                   return null;
                 })}
-                
+
                 {msg.usage && (
                   <div className="text-xs text-muted-foreground mt-2">
                     Tokens: {msg.usage.input_tokens} in, {msg.usage.output_tokens} out
                   </div>
                 )}
+              </div>
+              <div className="ml-2">
+                <TooltipSimple content="Copy message (Markdown)" side="top">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyThisMessage}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipSimple>
               </div>
             </div>
           </CardContent>
@@ -437,6 +497,37 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
       
       let renderedSomething = false;
       
+      const buildUserMarkdown = (msg: ClaudeStreamMessage): string => {
+        let md = '';
+        const m = msg.message || msg;
+        if (m && Array.isArray(m.content)) {
+          for (const content of m.content) {
+            if (content.type === 'text') {
+              const text = typeof content.text === 'string' ? content.text : String(content.text || '');
+              md += `${text}\n\n`;
+            } else if (content.type === 'tool_result') {
+              const c = content.content;
+              let text = '';
+              if (typeof c === 'string') text = c;
+              else if (Array.isArray(c)) text = c.map((x: any) => (typeof x === 'string' ? x : x.text || JSON.stringify(x))).join('\n');
+              else if (c?.text) text = c.text;
+              else text = JSON.stringify(c || {}, null, 2);
+              md += `### Tool Result\n\n\`\`\`\n${text}\n\`\`\`\n\n`;
+            }
+          }
+        }
+        return md || JSON.stringify(msg, null, 2);
+      };
+
+      const copyUserMessage = async () => {
+        try {
+          const md = buildUserMarkdown(message);
+          await navigator.clipboard.writeText(md);
+        } catch (e) {
+          console.error('Copy message failed', e);
+        }
+      };
+
       const renderedCard = (
         <Card className={cn("border-muted-foreground/20 bg-muted/20", className)}>
           <CardContent className="p-4">
@@ -738,6 +829,13 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                   
                   return null;
                 })}
+              </div>
+              <div className="ml-2">
+                <TooltipSimple content="Copy message (Markdown)" side="top">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyUserMessage}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipSimple>
               </div>
             </div>
           </CardContent>
