@@ -53,6 +53,8 @@ export const zh: import("./en").TranslationResources = {
     refreshOutput: "刷新输出",
     stopExecution: "停止执行",
     escToInterrupt: "（按 ESC 中断）",
+    copyMessageMarkdown: "复制消息（Markdown）",
+    tokensInOut: "Tokens：输入 {{in}}，输出 {{out}}",
   },
   projects: {
     title: "项目",

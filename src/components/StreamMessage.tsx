@@ -5,7 +5,7 @@ import {
   Bot, 
   AlertCircle, 
   CheckCircle2,
-  Copy
+  Clipboard
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ import { useTheme } from "@/hooks";
 import type { ClaudeStreamMessage } from "./AgentExecution";
 import { Button } from "@/components/ui/button";
 import { TooltipSimple } from "@/components/ui/tooltip-modern";
+import { useTranslation } from "react-i18next";
 import {
   TodoWidget,
   TodoReadWidget,
@@ -70,6 +71,7 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
   // Get current theme
   const { theme } = useTheme();
   const syntaxTheme = getClaudeSyntaxTheme(theme);
+  const { t } = useTranslation();
 
   const scaleStyle = useMemo(
     () => ({ '--chat-font-scale': fontScale } as React.CSSProperties),
@@ -471,17 +473,17 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                 })}
 
                 {msg.usage && (
-                  <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between">
-                    <span>
-                      Tokens: {msg.usage.input_tokens} in, {msg.usage.output_tokens} out
-                    </span>
+                  <div className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
                     {hasAssistantText && (
-                      <TooltipSimple content="Copy message (Markdown)" side="top">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 ml-2" onClick={copyThisMessage}>
-                          <Copy className="h-3.5 w-3.5" />
+                      <TooltipSimple content={t('common.copyMessageMarkdown')} side="top">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyThisMessage}>
+                          <Clipboard className="h-3.5 w-3.5" />
                         </Button>
                       </TooltipSimple>
                     )}
+                    <span>
+                      {t('common.tokensInOut', { in: msg.usage.input_tokens, out: msg.usage.output_tokens })}
+                    </span>
                   </div>
                 )}
               </div>

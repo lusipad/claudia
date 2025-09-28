@@ -53,6 +53,8 @@ export const en = {
     refreshOutput: "Refresh output",
     stopExecution: "Stop execution",
     escToInterrupt: "(esc to interrupt)",
+    copyMessageMarkdown: "Copy message (Markdown)",
+    tokensInOut: "Tokens: {{in}} in, {{out}} out",
   },
   projects: {
     title: "Projects",
