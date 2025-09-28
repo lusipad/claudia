@@ -220,8 +220,9 @@ fn create_default_commands() -> Vec<SlashCommand> {
             scope: "default".to_string(),
             namespace: None,
             file_path: "".to_string(),
-            content: "Clear the current chat view".to_string(),
-            description: Some("Clear chat (local view)".to_string()),
+            // Content/description reflect that this is a Claude command, not a local UI action
+            content: "Ask Claude to clear or reset the conversation context".to_string(),
+            description: Some("Send /clear to Claude (not a local UI action)".to_string()),
             allowed_tools: vec![],
             has_bash_commands: false,
             has_file_references: false,
