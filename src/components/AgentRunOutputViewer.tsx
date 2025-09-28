@@ -182,7 +182,13 @@ export function AgentRunOutputViewer({
             type: entry.type || "assistant"
           }));
           
-          setMessages(loadedMessages);
+          // Append only new messages to avoid UI flicker
+          setMessages(prev => {
+            if (loadedMessages.length > prev.length) {
+              return [...prev, ...loadedMessages.slice(prev.length)];
+            }
+            return prev;
+          });
           setRawJsonlOutput(history.map(h => JSON.stringify(h)));
           
           // Update cache
@@ -233,7 +239,12 @@ export function AgentRunOutputViewer({
         }
       }
       console.log('[AgentRunOutputViewer] Parsed', parsedMessages.length, 'messages from output');
-      setMessages(parsedMessages);
+      setMessages(prev => {
+        if (parsedMessages.length > prev.length) {
+          return [...prev, ...parsedMessages.slice(prev.length)];
+        }
+        return prev;
+      });
       
       // Update cache
       setCachedOutput(run.id, {
@@ -442,6 +453,18 @@ export function AgentRunOutputViewer({
       });
     }
   };
+
+  // ESC to stop a running agent session
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && run?.status === 'running') {
+        e.preventDefault();
+        Promise.resolve().then(() => handleStop());
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [run?.status, handleStop]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;

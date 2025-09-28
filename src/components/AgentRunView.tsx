@@ -185,6 +185,8 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
     setCopyPopoverOpen(false);
   };
 
+  
+
   const handleStop = async () => {
     if (!runId) {
       console.error('[AgentRunView] No run ID available to stop');
@@ -228,6 +230,18 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
       console.error('[AgentRunView] Failed to stop agent:', err);
     }
   };
+
+  // ESC to stop when viewing a running execution
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && run?.status === 'running') {
+        e.preventDefault();
+        handleStop();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [run?.status]);
 
   const renderIcon = (iconName: string) => {
     const Icon = AGENT_ICONS[iconName as keyof typeof AGENT_ICONS] || Bot;

@@ -52,6 +52,7 @@ export const zh: import("./en").TranslationResources = {
     dropImages: "拖拽图片到此处…",
     refreshOutput: "刷新输出",
     stopExecution: "停止执行",
+    escToInterrupt: "（按 ESC 中断）",
   },
   projects: {
     title: "项目",
@@ -501,6 +502,9 @@ export const zh: import("./en").TranslationResources = {
     scrollLeft: "向左滚动标签",
     scrollRight: "向右滚动标签",
     newProject: "新建项目 (Ctrl+T)",
+    newProjectShort: "新建项目",
+    noProjectsOpen: "暂无打开的项目",
+    clickToStartNewProject: "点击开始一个新项目",
     maxTabsReached: "已达到最大标签数",
     closeTab: "关闭 {{title}}",
   },

@@ -455,8 +455,9 @@ function AppContent() {
         onOpenChange={setShowClaudeBinaryDialog}
         onSuccess={() => {
           setToast({ message: t("settings.toast.settingsSaved"), type: "success" });
-          // Trigger a refresh of the Claude version check
-          window.location.reload();
+          // Avoid full window reload to prevent UI flashing; just close dialog
+          // and let version checks run on next interaction
+          setShowClaudeBinaryDialog(false);
         }}
         onError={(message) => setToast({ message, type: "error" })}
       />

@@ -474,6 +474,19 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
     }
   };
 
+  // Global ESC to stop execution (consistent with Claude Code UX)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isRunning) {
+        e.preventDefault();
+        // Use queued microtask to avoid re-entrancy in event loop
+        Promise.resolve().then(() => handleStop());
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isRunning, handleStop]);
+
   const handleCompositionStart = () => {
     isIMEComposingRef.current = true;
   };

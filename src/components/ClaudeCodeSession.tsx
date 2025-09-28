@@ -2028,10 +2028,12 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             )}
             {hasPendingEffects && (
               <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <span className="text-orange-500 font-semibold">
-                  • Effecting{pendingToolsLabel ? ` ${pendingToolsLabel}` : ''}…
-                </span>
-                <span className="text-muted-foreground">(esc to interrupt)</span>
+                {pendingToolsLabel && (
+                  <span className="text-orange-500 font-semibold">
+                    • {pendingToolsLabel}…
+                  </span>
+                )}
+                <span className="text-muted-foreground">{t('common.escToInterrupt')}</span>
               </div>
             )}
           </div>

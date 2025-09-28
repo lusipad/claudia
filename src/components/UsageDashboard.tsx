@@ -296,11 +296,19 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ }) => {
   // Memoize timeline chart data
   const timelineChartData = useMemo(() => {
     if (!stats?.by_date || stats.by_date.length === 0) return null;
-    
-    const maxCost = Math.max(...stats.by_date.map(d => d.total_cost), 0);
+
+    // Limit bars to avoid rendering thousands of nodes on very long histories
+    const source = (() => {
+      if (selectedDateRange === 'all' && stats.by_date.length > 365) {
+        return stats.by_date.slice(0, 365); // last ~1 year
+      }
+      return stats.by_date;
+    })();
+
+    const maxCost = Math.max(...source.map(d => d.total_cost), 0);
     const halfMaxCost = maxCost / 2;
-    const reversedData = stats.by_date.slice().reverse();
-    
+    const reversedData = source.slice().reverse();
+
     return {
       maxCost,
       halfMaxCost,
@@ -309,9 +317,9 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ }) => {
         ...day,
         heightPercent: maxCost > 0 ? (day.total_cost / maxCost) * 100 : 0,
         date: new Date(day.date.replace(/-/g, '/')),
-      }))
+      })),
     };
-  }, [stats?.by_date]);
+  }, [stats?.by_date, selectedDateRange]);
 
   return (
     <div className="h-full overflow-y-auto">

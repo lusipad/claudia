@@ -153,7 +153,13 @@ export function SessionOutputViewer({ session, onClose, className }: SessionOutp
             type: entry.type || "assistant"
           }));
           
-          setMessages(loadedMessages);
+          // Append only new messages to avoid UI flicker
+          setMessages(prev => {
+            if (loadedMessages.length > prev.length) {
+              return [...prev, ...loadedMessages.slice(prev.length)];
+            }
+            return prev;
+          });
           setRawJsonlOutput(history.map(h => JSON.stringify(h)));
           
           // Update cache
@@ -197,7 +203,12 @@ export function SessionOutputViewer({ session, onClose, className }: SessionOutp
           console.error("Failed to parse message:", err, line);
         }
       }
-      setMessages(parsedMessages);
+      setMessages(prev => {
+        if (parsedMessages.length > prev.length) {
+          return [...prev, ...parsedMessages.slice(prev.length)];
+        }
+        return prev;
+      });
       
       // Update cache
       setCachedOutput(session.id, {

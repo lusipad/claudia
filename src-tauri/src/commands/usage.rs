@@ -139,6 +139,7 @@ fn parse_jsonl_file(
     path: &PathBuf,
     encoded_project_name: &str,
     processed_hashes: &mut HashSet<String>,
+    date_range: Option<(NaiveDate, NaiveDate)>,
 ) -> Vec<UsageEntry> {
     let mut entries = Vec::new();
     let mut actual_project_path: Option<String> = None;
@@ -158,6 +159,17 @@ fn parse_jsonl_file(
             }
 
             if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(line) {
+                // Fast pre-filter by date range if provided
+                if let Some((start, end)) = date_range {
+                    if let Some(ts) = json_value.get("timestamp").and_then(|v| v.as_str()) {
+                        if let Ok(dt) = DateTime::parse_from_rfc3339(ts) {
+                            let d = dt.naive_local().date();
+                            if d < start || d > end {
+                                continue;
+                            }
+                        }
+                    }
+                }
                 // Extract the actual project path from cwd if we haven't already
                 if actual_project_path.is_none() {
                     if let Some(cwd) = json_value.get("cwd").and_then(|v| v.as_str()) {
@@ -226,28 +238,10 @@ fn parse_jsonl_file(
     entries
 }
 
-fn get_earliest_timestamp(path: &PathBuf) -> Option<String> {
-    if let Ok(content) = fs::read_to_string(path) {
-        let mut earliest_timestamp: Option<String> = None;
-        for line in content.lines() {
-            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(timestamp_str) = json_value.get("timestamp").and_then(|v| v.as_str()) {
-                    if let Some(current_earliest) = &earliest_timestamp {
-                        if timestamp_str < current_earliest.as_str() {
-                            earliest_timestamp = Some(timestamp_str.to_string());
-                        }
-                    } else {
-                        earliest_timestamp = Some(timestamp_str.to_string());
-                    }
-                }
-            }
-        }
-        return earliest_timestamp;
-    }
-    None
-}
-
-fn get_all_usage_entries(claude_path: &Path) -> Vec<UsageEntry> {
+fn get_all_usage_entries(
+    claude_path: &Path,
+    date_range: Option<(NaiveDate, NaiveDate)>,
+) -> Vec<UsageEntry> {
     let mut all_entries = Vec::new();
     let mut processed_hashes = HashSet::new();
     let projects_dir = claude_path.join("projects");
@@ -265,18 +259,35 @@ fn get_all_usage_entries(claude_path: &Path) -> Vec<UsageEntry> {
                     .filter_map(Result::ok)
                     .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("jsonl"))
                     .for_each(|entry| {
-                        files_to_process.push((entry.path().to_path_buf(), project_name.clone()));
+                        // If we have a date range, quickly filter files by last modified timestamp to avoid scanning old files
+                        let within_range = if let Some((start, end)) = date_range {
+                            let modified_opt = entry
+                                .metadata()
+                                .ok()
+                                .and_then(|m| m.modified().ok());
+                            if let Some(modified) = modified_opt {
+                                // Convert SystemTime to chrono Date
+                                let modified_dt: chrono::DateTime<chrono::Local> = modified.into();
+                                let d = modified_dt.naive_local().date();
+                                // Add a small +/-1 day margin of error
+                                d >= (start - chrono::Duration::days(1)) && d <= (end + chrono::Duration::days(1))
+                            } else {
+                                true // if we can't read metadata, include to be safe
+                            }
+                        } else {
+                            true
+                        };
+
+                        if within_range {
+                            files_to_process.push((entry.path().to_path_buf(), project_name.clone()));
+                        }
                     });
             }
         }
     }
 
-    // Sort files by their earliest timestamp to ensure chronological processing
-    // and deterministic deduplication.
-    files_to_process.sort_by_cached_key(|(path, _)| get_earliest_timestamp(path));
-
     for (path, project_name) in files_to_process {
-        let entries = parse_jsonl_file(&path, &project_name, &mut processed_hashes);
+        let entries = parse_jsonl_file(&path, &project_name, &mut processed_hashes, date_range);
         all_entries.extend(entries);
     }
 
@@ -292,7 +303,14 @@ pub fn get_usage_stats(days: Option<u32>) -> Result<UsageStats, String> {
         .ok_or("Failed to get home directory")?
         .join(".claude");
 
-    let all_entries = get_all_usage_entries(&claude_path);
+    // If days provided, compute a date range to prefilter files
+    let all_entries = if let Some(days) = days {
+        let end = Local::now().naive_local().date();
+        let start = end - chrono::Duration::days(days as i64);
+        get_all_usage_entries(&claude_path, Some((start, end)))
+    } else {
+        get_all_usage_entries(&claude_path, None)
+    };
 
     if all_entries.is_empty() {
         return Ok(UsageStats {
@@ -452,8 +470,6 @@ pub fn get_usage_by_date_range(start_date: String, end_date: String) -> Result<U
         .ok_or("Failed to get home directory")?
         .join(".claude");
 
-    let all_entries = get_all_usage_entries(&claude_path);
-
     // Parse dates
     let start = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").or_else(|_| {
         // Try parsing ISO datetime format
@@ -467,6 +483,9 @@ pub fn get_usage_by_date_range(start_date: String, end_date: String) -> Result<U
             .map(|dt| dt.naive_local().date())
             .map_err(|e| format!("Invalid end date: {}", e))
     })?;
+
+    // Prefilter files by date range to reduce IO
+    let all_entries = get_all_usage_entries(&claude_path, Some((start, end)));
 
     // Filter entries by date range
     let filtered_entries: Vec<_> = all_entries
@@ -625,7 +644,7 @@ pub fn get_usage_details(
         .ok_or("Failed to get home directory")?
         .join(".claude");
 
-    let mut all_entries = get_all_usage_entries(&claude_path);
+    let mut all_entries = get_all_usage_entries(&claude_path, None);
 
     // Filter by project if specified
     if let Some(project) = project_path {
@@ -650,10 +669,23 @@ pub fn get_session_stats(
         .ok_or("Failed to get home directory")?
         .join(".claude");
 
-    let all_entries = get_all_usage_entries(&claude_path);
+    // Build optional date range for prefiltering
+    let since_date = since.as_ref().and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
+    let until_date = until.as_ref().and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
 
-    let since_date = since.and_then(|s| NaiveDate::parse_from_str(&s, "%Y%m%d").ok());
-    let until_date = until.and_then(|s| NaiveDate::parse_from_str(&s, "%Y%m%d").ok());
+    let all_entries = match (since_date, until_date) {
+        (Some(s), Some(u)) => get_all_usage_entries(&claude_path, Some((s, u))),
+        (Some(s), None) => {
+            let u = Local::now().naive_local().date();
+            get_all_usage_entries(&claude_path, Some((s, u)))
+        }
+        (None, Some(u)) => {
+            // If only until provided, scan up to that date from a reasonable window (e.g., last 365 days)
+            let s = u - chrono::Duration::days(365);
+            get_all_usage_entries(&claude_path, Some((s, u)))
+        }
+        (None, None) => get_all_usage_entries(&claude_path, None),
+    };
 
     let filtered_entries: Vec<_> = all_entries
         .into_iter()

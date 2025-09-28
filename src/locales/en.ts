@@ -52,6 +52,7 @@ export const en = {
     dropImages: "Drop images here...",
     refreshOutput: "Refresh output",
     stopExecution: "Stop execution",
+    escToInterrupt: "(esc to interrupt)",
   },
   projects: {
     title: "Projects",
@@ -501,6 +502,9 @@ export const en = {
     scrollLeft: "Scroll tabs left",
     scrollRight: "Scroll tabs right",
     newProject: "New project (Ctrl+T)",
+    newProjectShort: "New Project",
+    noProjectsOpen: "No projects open",
+    clickToStartNewProject: "Click to start a new project",
     maxTabsReached: "Maximum tabs reached",
     closeTab: "Close {{title}}",
   },

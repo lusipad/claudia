@@ -8,6 +8,7 @@ import { api, type Project, type Session, type ClaudeMdFile } from '@/lib/api';
 import { ProjectList } from '@/components/ProjectList';
 import { SessionList } from '@/components/SessionList';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 // Lazy load heavy components
 const ClaudeCodeSession = lazy(() => import('@/components/ClaudeCodeSession').then(m => ({ default: m.ClaudeCodeSession })));
@@ -399,6 +400,7 @@ const TabPanel: React.FC<TabPanelProps> = ({ tab, isActive }) => {
 
 export const TabContent: React.FC = () => {
   const { tabs, activeTabId, createChatTab, createProjectsTab, findTabBySessionId, createClaudeFileTab, createAgentExecutionTab, createCreateAgentTab, createImportAgentTab, closeTab, updateTab } = useTabState();
+  const { t } = useTranslation();
   
   // Listen for events to open sessions in tabs
   useEffect(() => {
@@ -516,14 +518,14 @@ export const TabContent: React.FC = () => {
       {tabs.length === 0 && (
         <div className="flex items-center justify-center h-full text-muted-foreground">
           <div className="text-center">
-            <p className="text-lg mb-2">No projects open</p>
-            <p className="text-sm mb-4">Click to start a new project</p>
+            <p className="text-lg mb-2">{t('tabs.noProjectsOpen')}</p>
+            <p className="text-sm mb-4">{t('tabs.clickToStartNewProject')}</p>
             <Button
               onClick={() => createProjectsTab()}
               size="default"
             >
               <Plus className="w-4 h-4 mr-2" />
-              New Project
+              {t('tabs.newProjectShort')}
             </Button>
           </div>
         </div>

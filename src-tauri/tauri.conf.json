@@ -110,9 +110,7 @@
       "wix": {
         "language": "en-US"
       },
-      "nsis": {
-        "displayLanguageSelector": true
-      }
+      "nsis": null
     }
   }
 }

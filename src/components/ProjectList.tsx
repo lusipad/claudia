@@ -88,7 +88,8 @@ export const ProjectList: React.FC<ProjectListProps> = ({
   onOpenProject,
   className,
 }) => {
-  const [showAll, setShowAll] = useState(false);
+  // Default to expanded view (show all with pagination)
+  const [showAll, setShowAll] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const { t } = useTranslation();
 

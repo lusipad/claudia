@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { api } from './api';
 
 // Use the same message interface as AgentExecution for consistency
@@ -51,39 +51,38 @@ interface OutputCacheProviderProps {
 }
 
 export function OutputCacheProvider({ children }: OutputCacheProviderProps) {
-  const [cache, setCache] = useState<Map<number, CachedSessionOutput>>(new Map());
+  // Keep cache in a ref to avoid re-rendering the whole app tree on every poll
+  const cacheRef = useRef<Map<number, CachedSessionOutput>>(new Map());
   const [isPolling, setIsPolling] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const getCachedOutput = useCallback((sessionId: number): CachedSessionOutput | null => {
-    return cache.get(sessionId) || null;
-  }, [cache]);
+    return cacheRef.current.get(sessionId) || null;
+  }, []);
 
   const setCachedOutput = useCallback((sessionId: number, data: CachedSessionOutput) => {
-    setCache(prev => new Map(prev.set(sessionId, data)));
+    const next = new Map(cacheRef.current);
+    next.set(sessionId, data);
+    cacheRef.current = next;
   }, []);
 
   const updateSessionStatus = useCallback((sessionId: number, status: string) => {
-    setCache(prev => {
-      const existing = prev.get(sessionId);
-      if (existing) {
-        const updated = new Map(prev);
-        updated.set(sessionId, { ...existing, status });
-        return updated;
-      }
-      return prev;
-    });
+    const prev = cacheRef.current;
+    const existing = prev.get(sessionId);
+    if (existing) {
+      const updated = new Map(prev);
+      updated.set(sessionId, { ...existing, status });
+      cacheRef.current = updated;
+    }
   }, []);
 
   const clearCache = useCallback((sessionId?: number) => {
     if (sessionId) {
-      setCache(prev => {
-        const updated = new Map(prev);
-        updated.delete(sessionId);
-        return updated;
-      });
+      const updated = new Map(cacheRef.current);
+      updated.delete(sessionId);
+      cacheRef.current = updated;
     } else {
-      setCache(new Map());
+      cacheRef.current = new Map();
     }
   }, []);
 
@@ -141,15 +140,14 @@ export function OutputCacheProvider({ children }: OutputCacheProviderProps) {
 
       // Clean up cache for sessions that are no longer running
       const runningIds = new Set(runningSessions.map(s => s.id).filter(Boolean));
-      setCache(prev => {
-        const updated = new Map();
-        for (const [sessionId, data] of prev) {
-          if (runningIds.has(sessionId) || data.status !== 'running') {
-            updated.set(sessionId, data);
-          }
+      const prev = cacheRef.current;
+      const updated = new Map<number, CachedSessionOutput>();
+      for (const [sessionId, data] of prev) {
+        if (runningIds.has(sessionId) || data.status !== 'running') {
+          updated.set(sessionId, data);
         }
-        return updated;
-      });
+      }
+      cacheRef.current = updated;
     } catch (error) {
       console.warn('Failed to poll running sessions:', error);
     }
@@ -177,7 +175,7 @@ export function OutputCacheProvider({ children }: OutputCacheProviderProps) {
     return () => stopBackgroundPolling();
   }, [startBackgroundPolling, stopBackgroundPolling]);
 
-  const value: OutputCacheContextType = {
+  const value: OutputCacheContextType = useMemo(() => ({
     getCachedOutput,
     setCachedOutput,
     updateSessionStatus,
@@ -185,7 +183,7 @@ export function OutputCacheProvider({ children }: OutputCacheProviderProps) {
     isPolling,
     startBackgroundPolling,
     stopBackgroundPolling,
-  };
+  }), [getCachedOutput, setCachedOutput, updateSessionStatus, clearCache, isPolling, startBackgroundPolling, stopBackgroundPolling]);
 
   return (
     <OutputCacheContext.Provider value={value}>

@@ -99,6 +99,66 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
     if (!toolId) return null;
     return toolResults.get(toolId) || null;
   };
+
+  // Format a concise, CLI-like tool invocation line (e.g., "* bash <command>")
+  const formatToolInvocation = (name?: string, input?: any): string => {
+    if (!name) return "* tool";
+    const n = name.toLowerCase();
+
+    try {
+      // Known tools with readable summaries
+      if (n === 'bash' && input?.command) {
+        return `* bash ${String(input.command).trim()}`;
+      }
+      if (n === 'ls' && input?.path) {
+        return `* ls ${String(input.path).trim()}`;
+      }
+      if (n === 'read' && input?.file_path) {
+        return `* read ${String(input.file_path).trim()}`;
+      }
+      if (n === 'glob' && input?.pattern) {
+        return `* glob ${String(input.pattern).trim()}`;
+      }
+      if (n === 'grep' && input?.pattern) {
+        const path = input?.path ? ` ${String(input.path).trim()}` : '';
+        return `* grep ${String(input.pattern).trim()}${path}`;
+      }
+      if (n === 'write' && input?.file_path) {
+        const size = typeof input?.content === 'string' ? input.content.length : 0;
+        return `* write ${String(input.file_path).trim()} (${size} bytes)`;
+      }
+      if (n === 'edit' && input?.file_path) {
+        return `* edit ${String(input.file_path).trim()}`;
+      }
+      if (n === 'multiedit' && input?.file_path) {
+        const edits = Array.isArray(input?.edits) ? input.edits.length : 0;
+        return `* multiedit ${String(input.file_path).trim()} (${edits} edits)`;
+      }
+      if (n === 'todowrite') {
+        const count = Array.isArray(input?.todos) ? input.todos.length : 0;
+        return `* todowrite ${count} items`;
+      }
+      if (n === 'todoread') {
+        return `* todoread`;
+      }
+      if (n === 'task') {
+        const desc = input?.description || input?.prompt || '';
+        const short = String(desc).trim().slice(0, 80);
+        return `* task ${short}`;
+      }
+      if (name.startsWith('mcp__')) {
+        const short = JSON.stringify(input || {}).slice(0, 120);
+        return `* ${name} ${short}`;
+      }
+
+      // Generic fallback – one-line JSON input
+      const compact = JSON.stringify(input || {});
+      const short = compact.length > 160 ? compact.slice(0, 160) + '…' : compact;
+      return `* ${name} ${short}`;
+    } catch {
+      return `* ${name}`;
+    }
+  };
   
   try {
     // Skip rendering for meta messages that don't have meaningful content
@@ -283,17 +343,31 @@ const StreamMessageComponent: React.FC<StreamMessageProps> = ({
                       return null;
                     };
                     
+                    // Render the tool invocation line (CLI-like)
+                    const invocation = formatToolInvocation(content.name, input);
+                    const invocationLine = (
+                      <div key={`${idx}-invocation`} className="text-xs font-mono text-muted-foreground">
+                        {invocation}
+                      </div>
+                    );
+
                     // Render the tool widget
                     const widget = renderToolWidget();
                     if (widget) {
                       renderedSomething = true;
-                      return <div key={idx}>{widget}</div>;
+                      return (
+                        <div key={idx} className="space-y-1">
+                          {invocationLine}
+                          {widget}
+                        </div>
+                      );
                     }
                     
                     // Fallback to basic tool display
                     renderedSomething = true;
                     return (
                       <div key={idx} className="space-y-2">
+                        {invocationLine}
                         <div className="flex items-center gap-2">
                           <Terminal className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm font-medium">
