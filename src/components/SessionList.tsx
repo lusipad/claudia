@@ -1,13 +1,15 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, MessageSquare } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Pagination } from "@/components/ui/pagination";
+// import { Pagination } from "@/components/ui/pagination";
 import { ClaudeMemoriesDropdown } from "@/components/ClaudeMemoriesDropdown";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { truncateText, getFirstLine } from "@/lib/date-utils";
-import type { Session, ClaudeMdFile } from "@/lib/api";
+import { formatTimeAgo } from "@/lib/date-utils";
+import { api, type Session, type ClaudeMdFile } from "@/lib/api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface SessionListProps {
   /**
@@ -36,7 +38,7 @@ interface SessionListProps {
   className?: string;
 }
 
-const ITEMS_PER_PAGE = 12;
+const ITEMS_PER_PAGE = 9;
 
 /**
  * SessionList component - Displays paginated sessions for a specific project
@@ -56,18 +58,102 @@ export const SessionList: React.FC<SessionListProps> = ({
   onEditClaudeFile,
   className,
 }) => {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pagesLoaded, setPagesLoaded] = useState(1);
+  // Lazy-loaded session details cache keyed by session.id
+  const [details, setDetails] = useState<Record<string, { count: number; lastText?: string; lastAt?: string }>>({});
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = React.useRef(false);
   
   // Calculate pagination
-  const totalPages = Math.ceil(sessions.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentSessions = sessions.slice(startIndex, endIndex);
+  const totalPages = Math.ceil(sessions.length / ITEMS_PER_PAGE) || 1;
+  const visibleSessions = sessions.slice(0, pagesLoaded * ITEMS_PER_PAGE);
   
   // Reset to page 1 if sessions change
-  React.useEffect(() => {
-    setCurrentPage(1);
+  useEffect(() => {
+    setPagesLoaded(1);
   }, [sessions.length]);
+
+  // Infinite lazy loading when reaching sentinel
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const hasMore = pagesLoaded < totalPages;
+    if (!hasMore) return;
+
+    const io = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry.isIntersecting && !loadingMoreRef.current) {
+        loadingMoreRef.current = true;
+        requestAnimationFrame(() => {
+          setPagesLoaded((p) => Math.min(p + 1, totalPages));
+          setTimeout(() => (loadingMoreRef.current = false), 200);
+        });
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [pagesLoaded, totalPages]);
+
+  // Load extra details for the sessions visible on the current page (message count, last snippet, last activity)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDetails(seq: Session) {
+      try {
+        const existing = details[seq.id];
+        if (existing) return; // already cached
+        const history = await api.loadSessionHistory(seq.id, seq.project_id);
+        if (cancelled) return;
+
+        let count = Array.isArray(history) ? history.length : 0;
+        // Find last text-like snippet and timestamp
+        let lastText: string | undefined;
+        let lastAt: string | undefined;
+        if (Array.isArray(history) && history.length > 0) {
+          for (let i = history.length - 1; i >= 0; i--) {
+            const entry: any = history[i];
+            lastAt = entry.timestamp || lastAt;
+            // Try common shapes
+            if (typeof entry.message === 'string') {
+              if (entry.message.trim()) { lastText = entry.message; break; }
+            }
+            const msg = entry.message || entry;
+            if (msg?.content) {
+              if (typeof msg.content === 'string' && msg.content.trim()) { lastText = msg.content; break; }
+              if (Array.isArray(msg.content)) {
+                // find last text block
+                for (let j = msg.content.length - 1; j >= 0; j--) {
+                  const c = msg.content[j];
+                  if (typeof c === 'string' && c.trim()) { lastText = c; break; }
+                  if (c?.type === 'text') {
+                    const t = typeof c.text === 'string' ? c.text : (c.text?.text ?? '');
+                    if (t.trim()) { lastText = t; break; }
+                  }
+                }
+                if (lastText) break;
+              }
+            }
+          }
+        }
+
+        setDetails(prev => ({ ...prev, [seq.id]: { count, lastText, lastAt } }));
+      } catch (_e) {
+        // ignore per-card errors; do not block UI
+        setDetails(prev => ({ ...prev, [seq.id]: { count: 0 } }));
+      }
+    }
+
+    // Queue loads for current sessions without details
+    (async () => {
+      for (const s of visibleSessions) {
+        if (!details[s.id]) {
+          await loadDetails(s);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [visibleSessions.map(s => s.id).join(','), sessions.length]);
   
   return (
     <TooltipProvider>
@@ -88,7 +174,7 @@ export const SessionList: React.FC<SessionListProps> = ({
 
       <AnimatePresence mode="popLayout">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {currentSessions.map((session, index) => (
+          {visibleSessions.map((session, index) => (
             <motion.div
               key={session.id}
               initial={{ opacity: 0, y: 20 }}
@@ -144,26 +230,76 @@ export const SessionList: React.FC<SessionListProps> = ({
                       )}
                     </div>
                     
-                    {/* First message preview */}
-                    {session.first_message ? (
-                      <p className="text-caption text-muted-foreground line-clamp-2 mb-2">
-                        {truncateText(getFirstLine(session.first_message), 120)}
-                      </p>
-                    ) : (
-                      <p className="text-caption text-muted-foreground/60 italic mb-2">
-                        No messages yet
-                      </p>
-                    )}
+                    {/* Markdown preview - clamp to 4 lines */}
+                    {(() => {
+                      const first = session.first_message?.trim();
+                      const last = details[session.id]?.lastText?.trim();
+                      const preview = (() => {
+                        if (first && last && first !== last) return `${first}\n\n${last}`;
+                        return first || last || '';
+                      })();
+                      if (!preview) {
+                        return (
+                          <p className="text-caption text-muted-foreground/60 italic mb-1">No messages yet</p>
+                        );
+                      }
+                      return (
+                        <div className="text-caption text-muted-foreground whitespace-pre-wrap overflow-hidden break-words line-clamp-4 prose prose-sm dark:prose-invert max-w-none mb-1 max-h-24">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              code(props: any) {
+                                const { inline, children, ...rest } = props as any;
+                                // Render inline code compactly; blocks become inline-style for consistent clamping
+                                if (!inline) {
+                                  return <code className="bg-muted px-1 py-0.5 rounded" {...rest}>{children}</code>;
+                                }
+                                return <code className="bg-muted px-1 py-0.5 rounded" {...rest}>{children}</code>;
+                              },
+                              h1: ({children}) => <strong>{children}</strong>,
+                              h2: ({children}) => <strong>{children}</strong>,
+                              h3: ({children}) => <strong>{children}</strong>,
+                              ul: ({children}) => <span>{children}</span>,
+                              ol: ({children}) => <span>{children}</span>,
+                              li: ({children}) => <span>• {children} </span>,
+                              p: ({children}) => <span>{children} </span>,
+                              table: () => <span className="opacity-70">[table]</span>,
+                              thead: ({children}) => <span>{children}</span>,
+                              tbody: ({children}) => <span>{children}</span>,
+                              tr: ({children}) => <span> | {children} </span>,
+                              th: ({children}) => <strong>{children}</strong>,
+                              td: ({children}) => <span>{children}</span>,
+                              hr: () => <span> — </span>,
+                              blockquote: ({children}) => <span>“{children}” </span>,
+                              br: () => <span> </span>,
+                              img: () => <span className="opacity-70">[image]</span>,
+                            }}
+                          >
+                            {preview}
+                          </ReactMarkdown>
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* Metadata footer */}
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <p className="text-caption text-muted-foreground font-mono">
-                      {session.id.slice(-8)}
-                    </p>
-                    {session.todo_data && (
-                      <MessageSquare className="h-3 w-3 text-primary" />
-                    )}
+                  <div className="flex items-center justify-between pt-2 border-t text-caption text-muted-foreground">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-mono">{session.id.slice(-8)}</span>
+                      {details[session.id]?.count !== undefined && (
+                        <span className="whitespace-nowrap">{details[session.id]!.count} msgs</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const last = details[session.id]?.lastAt;
+                        const baseTs = last ? Date.parse(last) : (session.message_timestamp ? Date.parse(session.message_timestamp) : session.created_at * 1000);
+                        return <span title={new Date(baseTs).toLocaleString()}>{formatTimeAgo(baseTs)}</span>;
+                      })()}
+                      {session.todo_data && (
+                        <MessageSquare className="h-3 w-3 text-primary" />
+                      )}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -172,11 +308,8 @@ export const SessionList: React.FC<SessionListProps> = ({
         </div>
       </AnimatePresence>
       
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-        />
+        {/* Lazy-load sentinel */}
+        <div ref={sentinelRef} className="h-8" />
       </div>
     </TooltipProvider>
   );
