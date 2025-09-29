@@ -366,6 +366,8 @@ export const en = {
     model: "Model",
     modelClaude4Sonnet: "Claude 4 Sonnet",
     modelClaude4SonnetDesc: "Faster, efficient for most tasks",
+    modelClaudeSonnet45: "Claude Sonnet 4.5",
+    modelClaudeSonnet45Desc: "Latest model with enhanced capabilities",
     modelClaude4Opus: "Claude 4 Opus",
     modelClaude4OpusDesc: "More capable",
     taskDescription: "Task Description",
@@ -421,6 +423,8 @@ export const en = {
     // Models
     modelSonnet: "Claude 4 Sonnet",
     modelSonnetDesc: "Faster, efficient for most tasks",
+    modelSonnet45: "Claude Sonnet 4.5",
+    modelSonnet45Desc: "Latest model, enhanced capabilities",
     modelOpus: "Claude 4 Opus",
     modelOpusDesc: "More capable, better for complex tasks",
     modelPlan: "Plan Mode (opusplan)",

@@ -33,7 +33,7 @@ interface FloatingPromptInputProps {
    */
   onSend: (
     prompt: string,
-    model: "sonnet" | "opus" | "opusplan",
+    model: "sonnet" | "sonnet45" | "opus" | "opusplan",
     options?: {
       displayPrompt?: string;
       thinkingMode?: ThinkingMode;
@@ -50,7 +50,7 @@ interface FloatingPromptInputProps {
   /**
    * Default model to select
    */
-  defaultModel?: "sonnet" | "opus" | "opusplan";
+  defaultModel?: "sonnet" | "sonnet45" | "opus" | "opusplan";
   /**
    * Project path for file picker
    */
@@ -171,7 +171,7 @@ const ThinkingModeIndicator: React.FC<{ level: number; color?: string }> = ({ le
 };
 
 type Model = {
-  id: "sonnet" | "opus" | "opusplan";
+  id: "sonnet" | "sonnet45" | "opus" | "opusplan";
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -181,6 +181,14 @@ type Model = {
 
 // Models factory function for localization
 const createModels = (t: any): Model[] => [
+  {
+    id: "sonnet45",
+    name: t("prompt.modelSonnet45"),
+    description: t("prompt.modelSonnet45Desc"),
+    icon: <Zap className="h-3.5 w-3.5" />,
+    shortName: "S4.5",
+    color: "text-primary"
+  },
   {
     id: "sonnet",
     name: t("prompt.modelSonnet"),
@@ -223,7 +231,7 @@ const FloatingPromptInputInner = (
     onSend,
     isLoading = false,
     disabled = false,
-    defaultModel = "sonnet",
+    defaultModel = "sonnet45",
     projectPath,
     className,
     onCancel,
@@ -233,7 +241,7 @@ const FloatingPromptInputInner = (
 ) => {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState("");
-  const [selectedModel, setSelectedModel] = useState<"sonnet" | "opus" | "opusplan">(defaultModel);
+  const [selectedModel, setSelectedModel] = useState<"sonnet" | "sonnet45" | "opus" | "opusplan">(defaultModel);
   const [selectedThinkingMode, setSelectedThinkingMode] = useState<ThinkingMode>("auto");
   const [isExpanded, setIsExpanded] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);

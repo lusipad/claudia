@@ -74,6 +74,12 @@ const SONNET_4_OUTPUT_PRICE: f64 = 15.0;
 const SONNET_4_CACHE_WRITE_PRICE: f64 = 3.75;
 const SONNET_4_CACHE_READ_PRICE: f64 = 0.30;
 
+// Claude 4.5 Sonnet pricing constants (per million tokens)
+const SONNET_45_INPUT_PRICE: f64 = 3.0;
+const SONNET_45_OUTPUT_PRICE: f64 = 15.0;
+const SONNET_45_CACHE_WRITE_PRICE: f64 = 3.75;
+const SONNET_45_CACHE_READ_PRICE: f64 = 0.30;
+
 #[derive(Debug, Deserialize)]
 struct JsonlEntry {
     timestamp: String,
@@ -115,6 +121,13 @@ fn calculate_cost(model: &str, usage: &UsageData) -> f64 {
                 OPUS_4_OUTPUT_PRICE,
                 OPUS_4_CACHE_WRITE_PRICE,
                 OPUS_4_CACHE_READ_PRICE,
+            )
+        } else if model.contains("sonnet-4-5") || model.contains("claude-sonnet-4-5") || model.contains("sonnet-4.5") {
+            (
+                SONNET_45_INPUT_PRICE,
+                SONNET_45_OUTPUT_PRICE,
+                SONNET_45_CACHE_WRITE_PRICE,
+                SONNET_45_CACHE_READ_PRICE,
             )
         } else if model.contains("sonnet-4") || model.contains("claude-sonnet-4") {
             (

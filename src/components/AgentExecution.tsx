@@ -92,7 +92,7 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
   const { t } = useTranslation();
   const [projectPath] = useState(initialProjectPath || "");
   const [task, setTask] = useState(agent.default_task || "");
-  const [model, setModel] = useState(agent.model || "sonnet");
+  const [model, setModel] = useState(agent.model || "sonnet45");
   const [isRunning, setIsRunning] = useState(false);
   
   // Get tab state functions

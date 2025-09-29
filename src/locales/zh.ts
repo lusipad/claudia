@@ -366,6 +366,8 @@ export const zh: import("./en").TranslationResources = {
     model: "模型",
     modelClaude4Sonnet: "Claude 4 Sonnet",
     modelClaude4SonnetDesc: "更快、更高效，适用于大多数任务",
+    modelClaudeSonnet45: "Claude Sonnet 4.5",
+    modelClaudeSonnet45Desc: "最新模型,增强功能",
     modelClaude4Opus: "Claude 4 Opus",
     modelClaude4OpusDesc: "功能更强大",
     taskDescription: "任务描述",
@@ -421,6 +423,8 @@ export const zh: import("./en").TranslationResources = {
     // Models
     modelSonnet: "Claude 4 Sonnet",
     modelSonnetDesc: "更快、更高效，适用于大多数任务",
+    modelSonnet45: "Claude Sonnet 4.5",
+    modelSonnet45Desc: "最新模型,增强功能",
     modelOpus: "Claude 4 Opus",
     modelOpusDesc: "功能更强大，适用于复杂任务",
     modelPlan: "计划模式 (opusplan)",

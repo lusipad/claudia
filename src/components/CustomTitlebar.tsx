@@ -126,7 +126,7 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
         className={`${containerClassName} flex items-center gap-2`.trim()}
         style={{
           width: '56px',
-          height: '16px'
+          height: 'auto'
         }}
       >
         <button
@@ -146,7 +146,9 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            padding: 0,
+            margin: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#CA8A04'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EAB308'}
@@ -176,7 +178,9 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            padding: 0,
+            margin: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#16A34A'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#22C55E'}
@@ -206,7 +210,9 @@ export const CustomTitlebar: React.FC<CustomTitlebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            padding: 0,
+            margin: 0
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#DC2626'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EF4444'}
