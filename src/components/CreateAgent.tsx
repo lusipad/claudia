@@ -50,7 +50,7 @@ export const CreateAgent: React.FC<CreateAgentProps> = ({
   const [selectedIcon, setSelectedIcon] = useState<AgentIconName>((agent?.icon as AgentIconName) || "bot");
   const [systemPrompt, setSystemPrompt] = useState(agent?.system_prompt || "");
   const [defaultTask, setDefaultTask] = useState(agent?.default_task || "");
-  const [model, setModel] = useState(agent?.model || "sonnet45");
+  const [model, setModel] = useState(agent?.model || "sonnet");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -110,7 +110,7 @@ export const CreateAgent: React.FC<CreateAgentProps> = ({
          selectedIcon !== (agent?.icon || "bot") || 
          systemPrompt !== (agent?.system_prompt || "") ||
          defaultTask !== (agent?.default_task || "") ||
-         model !== (agent?.model || "sonnet45")) &&
+         model !== (agent?.model || "sonnet")) &&
         !confirm(t("common.unsavedChanges"))) {
       return;
     }
@@ -241,30 +241,6 @@ export const CreateAgent: React.FC<CreateAgentProps> = ({
               <div className="space-y-2 mt-4">
                 <Label className="text-caption text-muted-foreground">{t("agents.model")}</Label>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <motion.button
-                    type="button"
-                    onClick={() => setModel("sonnet45")}
-                    whileTap={{ scale: 0.97 }}
-                    transition={{ duration: 0.15 }}
-                    className={cn(
-                      "flex-1 px-4 py-3 rounded-md border transition-all",
-                      model === "sonnet45"
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:border-primary/50 hover:bg-accent"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Zap className={cn(
-                        "h-4 w-4",
-                        model === "sonnet45" ? "text-primary" : "text-muted-foreground"
-                      )} />
-                      <div className="text-left">
-                        <div className="text-body-small font-medium">{t("agents.modelClaudeSonnet45")}</div>
-                        <div className="text-caption text-muted-foreground">{t("agents.modelClaudeSonnet45Desc")}</div>
-                      </div>
-                    </div>
-                  </motion.button>
-
                   <motion.button
                     type="button"
                     onClick={() => setModel("sonnet")}
