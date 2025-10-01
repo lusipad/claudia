@@ -4,10 +4,11 @@ export { useDebounce, useDebouncedCallback } from './useDebounce';
 export { useApiCall } from './useApiCall';
 export { usePagination } from './usePagination';
 export { useTheme } from './useTheme';
-export { 
-  useAnalytics, 
-  useTrackEvent, 
-  usePageView, 
+export { useDoubleEscape } from './useDoubleEscape';
+export {
+  useAnalytics,
+  useTrackEvent,
+  usePageView,
   useAppLifecycle,
   useComponentMetrics,
   useInteractionTracking,
@@ -19,8 +20,8 @@ export {
   useAIInteractionTracking,
   useNetworkPerformanceTracking
 } from './useAnalytics';
-export { 
-  usePerformanceMonitor, 
-  useAsyncPerformanceTracker 
+export {
+  usePerformanceMonitor,
+  useAsyncPerformanceTracker
 } from './usePerformanceMonitor';
 export { TAB_SCREEN_NAMES } from './useAnalytics';

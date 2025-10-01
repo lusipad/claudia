@@ -603,6 +603,10 @@ export const zh: import("./en").TranslationResources = {
   checkpoint: {
     title: "检查点设置",
     subtitle: "管理会话检查点和恢复",
+    tabs: {
+      general: "通用",
+      storage: "存储与清理"
+    },
     autoCheckpoint: "自动检查点",
     autoCheckpointDesc: "基于所选策略自动创建检查点",
     strategy: "检查点策略",
@@ -625,8 +629,20 @@ export const zh: import("./en").TranslationResources = {
     keepCountDesc: "要保留的检查点数量",
     totalCheckpoints: "总检查点数：",
     management: "存储管理",
+    storageStats: {
+      totalSize: "总大小",
+      contentPool: "内容池",
+      oldest: "最旧",
+      newest: "最新"
+    },
     cleanupOld: "清理",
     cleanupOldDesc: "删除旧检查点，仅保留最近的",
+    autoCleanup: "自动清理过期检查点",
+    autoCleanupDesc: "自动删除超过保留期的检查点",
+    retentionPeriod: "保留期（天）",
+    cleanNow: "立即清理",
+    cleaning: "清理中...",
+    retentionDesc: "超过 {{days}} 天的检查点将被自动删除（符合官方 Claude Code Rewind）",
     saveSettings: "保存设置",
     saving: "保存中...",
     loadFailed: "加载检查点设置失败",

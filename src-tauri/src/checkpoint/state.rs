@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 use super::manager::CheckpointManager;
 
@@ -18,6 +19,8 @@ pub struct CheckpointState {
     managers: Arc<RwLock<HashMap<String, Arc<CheckpointManager>>>>,
     /// The Claude directory path for consistent access
     claude_dir: Arc<RwLock<Option<PathBuf>>>,
+    /// Background cleanup task handle
+    cleanup_task: Arc<RwLock<Option<JoinHandle<()>>>>,
 }
 
 impl CheckpointState {
@@ -26,6 +29,7 @@ impl CheckpointState {
         Self {
             managers: Arc::new(RwLock::new(HashMap::new())),
             claude_dir: Arc::new(RwLock::new(None)),
+            cleanup_task: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -131,6 +135,82 @@ impl CheckpointState {
         let count = self.active_count().await;
         self.clear_all().await;
         count
+    }
+
+    /// Starts background cleanup task for expired checkpoints
+    /// This task runs immediately on startup and then every 24 hours
+    pub async fn start_background_cleanup(&self) {
+        let managers = Arc::clone(&self.managers);
+        let claude_dir = Arc::clone(&self.claude_dir);
+
+        let task = tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+
+            // Run cleanup immediately on startup
+            log::info!("Running initial checkpoint cleanup on startup");
+            Self::run_cleanup_for_all_sessions(&managers, &claude_dir).await;
+
+            // Then run every 24 hours
+            let mut cleanup_interval = interval(Duration::from_secs(24 * 60 * 60));
+            cleanup_interval.tick().await; // Skip first tick (already ran immediately)
+
+            loop {
+                cleanup_interval.tick().await;
+                log::info!("Running scheduled checkpoint cleanup");
+                Self::run_cleanup_for_all_sessions(&managers, &claude_dir).await;
+            }
+        });
+
+        let mut cleanup_task = self.cleanup_task.write().await;
+        *cleanup_task = Some(task);
+    }
+
+    /// Helper function to run cleanup for all active sessions
+    async fn run_cleanup_for_all_sessions(
+        managers: &Arc<RwLock<HashMap<String, Arc<CheckpointManager>>>>,
+        _claude_dir: &Arc<RwLock<Option<PathBuf>>>,
+    ) {
+        let managers_map = managers.read().await;
+        let mut total_removed = 0;
+
+        for (session_id, manager) in managers_map.iter() {
+            match manager.cleanup_expired_checkpoints().await {
+                Ok(removed) => {
+                    if removed > 0 {
+                        log::info!(
+                            "Cleaned up {} expired checkpoints for session: {}",
+                            removed,
+                            session_id
+                        );
+                        total_removed += removed;
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to cleanup checkpoints for session {}: {}",
+                        session_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        if total_removed > 0 {
+            log::info!(
+                "Background cleanup completed: removed {} checkpoints across all sessions",
+                total_removed
+            );
+        }
+    }
+
+    /// Stops the background cleanup task
+    #[allow(dead_code)]
+    pub async fn stop_background_cleanup(&self) {
+        let mut cleanup_task = self.cleanup_task.write().await;
+        if let Some(task) = cleanup_task.take() {
+            task.abort();
+            log::info!("Background cleanup task stopped");
+        }
     }
 }
 

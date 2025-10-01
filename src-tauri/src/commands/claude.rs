@@ -1651,6 +1651,62 @@ pub async fn restore_checkpoint(
     Ok(result)
 }
 
+/// Restores a session to a specific checkpoint with restore mode
+/// (aligns with official Claude Code Rewind functionality)
+#[tauri::command]
+pub async fn restore_checkpoint_with_mode(
+    app: tauri::State<'_, crate::checkpoint::state::CheckpointState>,
+    checkpoint_id: String,
+    session_id: String,
+    project_id: String,
+    project_path: String,
+    mode: crate::checkpoint::RestoreMode,
+) -> Result<crate::checkpoint::CheckpointResult, String> {
+    log::info!(
+        "Restoring checkpoint: {} with mode: {:?} for session: {}",
+        checkpoint_id,
+        mode,
+        session_id
+    );
+
+    let manager = app
+        .get_or_create_manager(
+            session_id.clone(),
+            project_id.clone(),
+            PathBuf::from(&project_path),
+        )
+        .await
+        .map_err(|e| format!("Failed to get checkpoint manager: {}", e))?;
+
+    let result = manager
+        .restore_checkpoint_with_mode(&checkpoint_id, mode)
+        .await
+        .map_err(|e| format!("Failed to restore checkpoint: {}", e))?;
+
+    // Update the session JSONL file with restored messages only if mode includes conversation
+    if mode == crate::checkpoint::RestoreMode::Both
+        || mode == crate::checkpoint::RestoreMode::ConversationOnly
+    {
+        let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
+        let session_path = claude_dir
+            .join("projects")
+            .join(&result.checkpoint.project_id)
+            .join(format!("{}.jsonl", session_id));
+
+        // The manager has already restored the messages internally,
+        // but we need to update the actual session file
+        let (_, _, messages) = manager
+            .storage
+            .load_checkpoint(&result.checkpoint.project_id, &session_id, &checkpoint_id)
+            .map_err(|e| format!("Failed to load checkpoint data: {}", e))?;
+
+        fs::write(&session_path, messages)
+            .map_err(|e| format!("Failed to update session file: {}", e))?;
+    }
+
+    Ok(result)
+}
+
 /// Lists all checkpoints for a session
 #[tauri::command]
 pub async fn list_checkpoints(
@@ -1939,6 +1995,58 @@ pub async fn cleanup_old_checkpoints(
         .storage
         .cleanup_old_checkpoints(&project_id, &session_id, keep_count)
         .map_err(|e| format!("Failed to cleanup checkpoints: {}", e))
+}
+
+/// Triggers cleanup of expired checkpoints (time-based retention)
+/// This aligns with official Claude Code Rewind's 30-day retention
+#[tauri::command]
+pub async fn cleanup_expired_checkpoints(
+    app: tauri::State<'_, crate::checkpoint::state::CheckpointState>,
+    session_id: String,
+    project_id: String,
+    project_path: String,
+) -> Result<usize, String> {
+    log::info!(
+        "Cleaning up expired checkpoints for session: {}",
+        session_id
+    );
+
+    let manager = app
+        .get_or_create_manager(
+            session_id.clone(),
+            project_id.clone(),
+            PathBuf::from(project_path),
+        )
+        .await
+        .map_err(|e| format!("Failed to get checkpoint manager: {}", e))?;
+
+    manager
+        .cleanup_expired_checkpoints()
+        .await
+        .map_err(|e| format!("Failed to cleanup expired checkpoints: {}", e))
+}
+
+/// Gets storage statistics for checkpoints
+#[tauri::command]
+pub async fn get_checkpoint_storage_stats(
+    app: tauri::State<'_, crate::checkpoint::state::CheckpointState>,
+    session_id: String,
+    project_id: String,
+    project_path: String,
+) -> Result<serde_json::Value, String> {
+    log::info!("Getting checkpoint storage stats for session: {}", session_id);
+
+    let manager = app
+        .get_or_create_manager(session_id, project_id, PathBuf::from(project_path))
+        .await
+        .map_err(|e| format!("Failed to get checkpoint manager: {}", e))?;
+
+    let stats = manager
+        .get_storage_stats()
+        .await
+        .map_err(|e| format!("Failed to get storage stats: {}", e))?;
+
+    serde_json::to_value(&stats).map_err(|e| format!("Failed to serialize stats: {}", e))
 }
 
 /// Gets checkpoint settings for a session

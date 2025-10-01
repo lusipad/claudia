@@ -603,6 +603,10 @@ export const en = {
   checkpoint: {
     title: "Checkpoint Settings",
     subtitle: "Manage session checkpoints and recovery",
+    tabs: {
+      general: "General",
+      storage: "Storage & Cleanup"
+    },
     autoCheckpoint: "Automatic Checkpoints",
     autoCheckpointDesc: "Automatically create checkpoints based on the selected strategy",
     strategy: "Checkpoint Strategy",
@@ -625,8 +629,20 @@ export const en = {
     keepCountDesc: "Number of checkpoints to keep",
     totalCheckpoints: "Total checkpoints:",
     management: "Storage Management",
+    storageStats: {
+      totalSize: "Total Size",
+      contentPool: "Content Pool",
+      oldest: "Oldest",
+      newest: "Newest"
+    },
     cleanupOld: "Clean Up",
     cleanupOldDesc: "Remove old checkpoints, keeping only the most recent",
+    autoCleanup: "Auto-cleanup Expired Checkpoints",
+    autoCleanupDesc: "Automatically remove checkpoints older than retention period",
+    retentionPeriod: "Retention Period (Days)",
+    cleanNow: "Clean Now",
+    cleaning: "Cleaning...",
+    retentionDesc: "Checkpoints older than {{days}} days will be automatically removed (aligns with official Claude Code Rewind)",
     saveSettings: "Save Settings",
     saving: "Saving...",
     loadFailed: "Failed to load checkpoint settings",

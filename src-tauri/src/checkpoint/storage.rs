@@ -6,7 +6,8 @@ use uuid::Uuid;
 use zstd::stream::{decode_all, encode_all};
 
 use super::{
-    Checkpoint, CheckpointPaths, CheckpointResult, FileSnapshot, SessionTimeline, TimelineNode,
+    Checkpoint, CheckpointPaths, CheckpointResult, CheckpointStorageStats, FileSnapshot,
+    SessionTimeline, TimelineNode,
 };
 
 /// Manages checkpoint storage operations
@@ -376,6 +377,103 @@ impl CheckpointStorage {
         Ok(removed_count)
     }
 
+    /// Clean up expired checkpoints based on retention policy (time-based)
+    /// This aligns with official Claude Code Rewind's 30-day retention
+    pub fn cleanup_expired_checkpoints(
+        &self,
+        project_id: &str,
+        session_id: &str,
+        current_checkpoint_id: Option<&str>,
+    ) -> Result<usize> {
+        let paths = CheckpointPaths::new(&self.claude_dir, project_id, session_id);
+        let timeline = self.load_timeline(&paths.timeline_file)?;
+
+        // Collect all checkpoints
+        let mut all_checkpoints = Vec::new();
+        if let Some(root) = &timeline.root_node {
+            Self::collect_checkpoints(root, &mut all_checkpoints);
+        }
+
+        // Build ancestor chain for current checkpoint (to protect from deletion)
+        let protected_ids = if let Some(current_id) = current_checkpoint_id {
+            self.build_ancestor_chain(&all_checkpoints, current_id)
+        } else {
+            std::collections::HashSet::new()
+        };
+
+        // Get current time
+        let now = chrono::Utc::now();
+
+        // Find expired checkpoints
+        let mut expired_checkpoints = Vec::new();
+        for checkpoint in &all_checkpoints {
+            // Skip if this checkpoint is in the protected ancestor chain
+            if protected_ids.contains(&checkpoint.id) {
+                continue;
+            }
+
+            // Calculate expiration date
+            let retention_days = checkpoint.metadata.retention_days as i64;
+            let expiration_date = checkpoint.timestamp + chrono::Duration::days(retention_days);
+
+            // Check if expired
+            if now > expiration_date {
+                expired_checkpoints.push(checkpoint.clone());
+            }
+        }
+
+        // Remove expired checkpoints
+        let mut removed_count = 0;
+        for checkpoint in expired_checkpoints {
+            if self.remove_checkpoint(&paths, &checkpoint.id).is_ok() {
+                removed_count += 1;
+                log::info!(
+                    "Removed expired checkpoint {} (age: {} days)",
+                    checkpoint.id,
+                    (now - checkpoint.timestamp).num_days()
+                );
+            }
+        }
+
+        // Run garbage collection if we removed any checkpoints
+        if removed_count > 0 {
+            match self.garbage_collect_content(project_id, session_id) {
+                Ok(gc_count) => {
+                    log::info!("Garbage collected {} unreferenced content files", gc_count);
+                }
+                Err(e) => {
+                    log::warn!("Failed to garbage collect content: {}", e);
+                }
+            }
+        }
+
+        Ok(removed_count)
+    }
+
+    /// Build ancestor chain for a checkpoint (all parents up to root)
+    fn build_ancestor_chain(
+        &self,
+        checkpoints: &[Checkpoint],
+        checkpoint_id: &str,
+    ) -> std::collections::HashSet<String> {
+        let mut ancestors = std::collections::HashSet::new();
+        let mut current_id = Some(checkpoint_id.to_string());
+
+        // Build a map for quick parent lookup
+        let mut parent_map = std::collections::HashMap::new();
+        for checkpoint in checkpoints {
+            parent_map.insert(checkpoint.id.clone(), checkpoint.parent_checkpoint_id.clone());
+        }
+
+        // Walk up the ancestor chain
+        while let Some(id) = current_id {
+            ancestors.insert(id.clone());
+            current_id = parent_map.get(&id).and_then(|p| p.clone());
+        }
+
+        ancestors
+    }
+
     /// Collect all checkpoints from the tree in order
     fn collect_checkpoints(node: &TimelineNode, checkpoints: &mut Vec<Checkpoint>) {
         checkpoints.push(node.checkpoint.clone());
@@ -453,5 +551,78 @@ impl CheckpointStorage {
         }
 
         Ok(removed_count)
+    }
+
+    /// Get storage statistics for checkpoints
+    pub fn get_storage_stats(
+        &self,
+        project_id: &str,
+        session_id: &str,
+    ) -> Result<CheckpointStorageStats> {
+        let paths = CheckpointPaths::new(&self.claude_dir, project_id, session_id);
+
+        // Calculate total size of checkpoints directory
+        let total_size = Self::calculate_directory_size(&paths.checkpoints_dir)?;
+
+        // Calculate size of content pool
+        let content_pool_size = if paths.files_dir.join("content_pool").exists() {
+            Self::calculate_directory_size(&paths.files_dir.join("content_pool"))?
+        } else {
+            0
+        };
+
+        // Load timeline to get checkpoint stats
+        let timeline = self.load_timeline(&paths.timeline_file)?;
+
+        // Collect all checkpoints
+        let mut checkpoints = Vec::new();
+        if let Some(root) = &timeline.root_node {
+            Self::collect_checkpoints(root, &mut checkpoints);
+        }
+
+        // Find oldest and newest checkpoints
+        let oldest_checkpoint = checkpoints
+            .iter()
+            .min_by_key(|c| c.timestamp)
+            .map(|c| c.timestamp);
+
+        let newest_checkpoint = checkpoints
+            .iter()
+            .max_by_key(|c| c.timestamp)
+            .map(|c| c.timestamp);
+
+        Ok(CheckpointStorageStats {
+            total_checkpoints: checkpoints.len(),
+            total_size_bytes: total_size,
+            content_pool_size_bytes: content_pool_size,
+            oldest_checkpoint,
+            newest_checkpoint,
+        })
+    }
+
+    /// Calculate total size of a directory recursively
+    fn calculate_directory_size(path: &Path) -> Result<u64> {
+        if !path.exists() {
+            return Ok(0);
+        }
+
+        let mut total_size = 0u64;
+
+        if path.is_file() {
+            return Ok(path.metadata()?.len());
+        }
+
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+
+            if entry_path.is_file() {
+                total_size += entry.metadata()?.len();
+            } else if entry_path.is_dir() {
+                total_size += Self::calculate_directory_size(&entry_path)?;
+            }
+        }
+
+        Ok(total_size)
     }
 }

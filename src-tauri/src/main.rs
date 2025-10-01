@@ -19,15 +19,16 @@ use commands::agents::{
 };
 use commands::claude::{
     cancel_claude_execution, check_auto_checkpoint, check_claude_version, cleanup_old_checkpoints,
-    clear_checkpoint_manager, continue_claude_code, create_checkpoint, create_project,
-    execute_claude_code, find_claude_md_files, fork_from_checkpoint, get_checkpoint_diff,
-    get_checkpoint_settings, get_checkpoint_state_stats, get_claude_session_output,
+    cleanup_expired_checkpoints, clear_checkpoint_manager, continue_claude_code,
+    create_checkpoint, create_project, execute_claude_code, find_claude_md_files,
+    fork_from_checkpoint, get_checkpoint_diff, get_checkpoint_settings,
+    get_checkpoint_state_stats, get_checkpoint_storage_stats, get_claude_session_output,
     get_claude_settings, get_home_directory, get_hooks_config, get_project_sessions,
     get_recently_modified_files, get_session_timeline, get_system_prompt, list_checkpoints,
     list_directory_contents, list_projects, list_running_claude_sessions, load_session_history,
-    open_new_session, read_claude_md_file, restore_checkpoint, resume_claude_code,
-    save_claude_md_file, save_claude_settings, save_system_prompt, search_files,
-    track_checkpoint_message, track_session_messages, update_checkpoint_settings,
+    open_new_session, read_claude_md_file, restore_checkpoint, restore_checkpoint_with_mode,
+    resume_claude_code, save_claude_md_file, save_claude_settings, save_system_prompt,
+    search_files, track_checkpoint_message, track_session_messages, update_checkpoint_settings,
     update_hooks_config, validate_hook_command, ClaudeProcessState,
 };
 use commands::mcp::{
@@ -123,7 +124,7 @@ fn main() {
             // Initialize checkpoint state
             let checkpoint_state = CheckpointState::new();
 
-            // Set the Claude directory path
+            // Set the Claude directory path and start background cleanup
             if let Ok(claude_dir) = dirs::home_dir()
                 .ok_or("Could not find home directory")
                 .and_then(|home| {
@@ -136,6 +137,9 @@ fn main() {
                 let state_clone = checkpoint_state.clone();
                 tauri::async_runtime::spawn(async move {
                     state_clone.set_claude_dir(claude_dir).await;
+                    // Start background cleanup task after setting Claude directory
+                    log::info!("Starting background checkpoint cleanup task");
+                    state_clone.start_background_cleanup().await;
                 });
             }
 
@@ -214,6 +218,7 @@ fn main() {
             // Checkpoint Management
             create_checkpoint,
             restore_checkpoint,
+            restore_checkpoint_with_mode,
             list_checkpoints,
             fork_from_checkpoint,
             get_session_timeline,
@@ -223,7 +228,9 @@ fn main() {
             track_session_messages,
             check_auto_checkpoint,
             cleanup_old_checkpoints,
+            cleanup_expired_checkpoints,
             get_checkpoint_settings,
+            get_checkpoint_storage_stats,
             clear_checkpoint_manager,
             get_checkpoint_state_stats,
             // Agent Management

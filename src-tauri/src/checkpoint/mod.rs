@@ -43,6 +43,22 @@ pub struct CheckpointMetadata {
     pub file_changes: usize,
     /// Size of all file snapshots in bytes
     pub snapshot_size: u64,
+    /// Type of checkpoint (auto/manual/pre-restore)
+    #[serde(default)]
+    pub checkpoint_type: CheckpointType,
+    /// Whether this checkpoint contains bash operations
+    #[serde(default)]
+    pub has_bash_operations: bool,
+    /// Whether external changes may have occurred
+    #[serde(default)]
+    pub may_have_external_changes: bool,
+    /// Retention period in days (default: 30)
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+}
+
+fn default_retention_days() -> u32 {
+    30
 }
 
 /// Represents a snapshot of a file at a checkpoint
@@ -110,6 +126,44 @@ pub enum CheckpointStrategy {
     Smart,
 }
 
+/// Restore mode for checkpoint restoration (aligns with official Claude Code Rewind)
+#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RestoreMode {
+    /// Restore both code and conversation history
+    Both,
+    /// Restore conversation only, keep current code state
+    /// Use case: Want to rephrase question but keep code changes
+    ConversationOnly,
+    /// Restore code only, keep conversation history
+    /// Use case: Undo wrong code changes but preserve discussion context
+    CodeOnly,
+}
+
+impl Default for RestoreMode {
+    fn default() -> Self {
+        RestoreMode::Both
+    }
+}
+
+/// Type of checkpoint (aligns with official Claude Code Rewind)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointType {
+    /// Automatic checkpoint created before each user prompt
+    Auto,
+    /// User manually created checkpoint
+    Manual,
+    /// Automatic backup before restore operation
+    PreRestore,
+}
+
+impl Default for CheckpointType {
+    fn default() -> Self {
+        CheckpointType::Manual
+    }
+}
+
 /// Tracks the state of files for checkpointing
 #[derive(Debug, Clone)]
 pub struct FileTracker {
@@ -169,6 +223,22 @@ pub struct FileDiff {
     pub deletions: usize,
     /// Unified diff content (optional)
     pub diff_content: Option<String>,
+}
+
+/// Storage statistics for checkpoints
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointStorageStats {
+    /// Total number of checkpoints
+    pub total_checkpoints: usize,
+    /// Total size of checkpoints in bytes
+    pub total_size_bytes: u64,
+    /// Size of content pool in bytes
+    pub content_pool_size_bytes: u64,
+    /// Timestamp of oldest checkpoint
+    pub oldest_checkpoint: Option<DateTime<Utc>>,
+    /// Timestamp of newest checkpoint
+    pub newest_checkpoint: Option<DateTime<Utc>>,
 }
 
 impl SessionTimeline {

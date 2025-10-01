@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { 
-  GitBranch, 
-  Save, 
-  RotateCcw, 
+import {
+  GitBranch,
+  Save,
+  RotateCcw,
   GitFork,
   AlertCircle,
   ChevronDown,
   ChevronRight,
   Hash,
   FileCode,
-  Diff
+  Diff,
+  MessageSquare,
+  Info,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,7 +23,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api, type Checkpoint, type TimelineNode, type SessionTimeline, type CheckpointDiff } from "@/lib/api";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { api, type Checkpoint, type TimelineNode, type SessionTimeline, type CheckpointDiff, type RestoreMode } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useTrackEvent } from "@/hooks";
@@ -64,11 +69,14 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDiffDialog, setShowDiffDialog] = useState(false);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [checkpointDescription, setCheckpointDescription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<CheckpointDiff | null>(null);
   const [compareCheckpoint, setCompareCheckpoint] = useState<Checkpoint | null>(null);
+  const [checkpointToRestore, setCheckpointToRestore] = useState<Checkpoint | null>(null);
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>("both");
 
   // Analytics tracking
   const trackEvent = useTrackEvent();
@@ -155,42 +163,55 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
   };
 
   const handleRestoreCheckpoint = async (checkpoint: Checkpoint) => {
-    if (!confirm(`Restore to checkpoint "${checkpoint.description || checkpoint.id.slice(0, 8)}"? Current state will be saved as a new checkpoint.`)) {
-      return;
-    }
+    // Show restore mode selection dialog
+    setCheckpointToRestore(checkpoint);
+    setRestoreMode("both");
+    setShowRestoreDialog(true);
+  };
+
+  const confirmRestore = async () => {
+    if (!checkpointToRestore) return;
 
     try {
       setIsLoading(true);
       setError(null);
-      
-      const checkpointTime = new Date(checkpoint.timestamp).getTime();
+      setShowRestoreDialog(false);
+
+      const checkpointTime = new Date(checkpointToRestore.timestamp).getTime();
       const timeSinceCheckpoint = Date.now() - checkpointTime;
-      
-      // First create a checkpoint of current state
+
+      // First create a checkpoint of current state (PreRestore type)
       await api.createCheckpoint(
         sessionId,
         projectId,
         projectPath,
         currentMessageIndex,
-        "Auto-save before restore"
+        `备份（恢复前）- ${new Date().toLocaleString()}`
       );
-      
-      // Then restore
-      await api.restoreCheckpoint(checkpoint.id, sessionId, projectId, projectPath);
-      
+
+      // Then restore with selected mode
+      await api.restoreCheckpointWithMode(
+        checkpointToRestore.id,
+        sessionId,
+        projectId,
+        projectPath,
+        restoreMode
+      );
+
       // Track checkpoint restoration
       trackEvent.checkpointRestored({
-        checkpoint_id: checkpoint.id,
+        checkpoint_id: checkpointToRestore.id,
         time_since_checkpoint_ms: timeSinceCheckpoint
       });
-      
+
       await loadTimeline();
-      onCheckpointSelect(checkpoint);
+      onCheckpointSelect(checkpointToRestore);
     } catch (err) {
       console.error("Failed to restore checkpoint:", err);
       setError(t("errors.failedToRestoreCheckpoint"));
     } finally {
       setIsLoading(false);
+      setCheckpointToRestore(null);
     }
   };
 
@@ -324,7 +345,7 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
                   <p className="text-xs text-muted-foreground line-clamp-2">
                     {node.checkpoint.metadata.userPrompt || "No prompt"}
                   </p>
-                  
+
                   <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Hash className="h-3 w-3" />
@@ -334,6 +355,21 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
                       <FileCode className="h-3 w-3" />
                       {node.checkpoint.metadata.fileChanges} files
                     </span>
+                    {node.checkpoint.metadata.hasBashOperations && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-xs gap-1 text-orange-600 border-orange-600">
+                              <AlertTriangle className="h-3 w-3" />
+                              Bash
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            此检查点包含 Bash 操作，副作用可能未完全跟踪
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 </div>
                 
@@ -630,6 +666,177 @@ export const TimelineNavigator: React.FC<TimelineNavigatorProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Restore confirmation dialog with mode selection */}
+      <Dialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>恢复检查点</DialogTitle>
+            <DialogDescription>
+              选择恢复模式以精确控制恢复内容
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Checkpoint info */}
+            {checkpointToRestore && (
+              <div className="rounded-lg border p-4 bg-muted/50">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-mono text-muted-foreground">
+                        {checkpointToRestore.id.slice(0, 8)}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {formatDistanceToNow(new Date(checkpointToRestore.timestamp), { addSuffix: true })}
+                      </span>
+                    </div>
+                    {checkpointToRestore.description && (
+                      <p className="text-sm font-medium mb-1">
+                        {checkpointToRestore.description}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {checkpointToRestore.metadata.userPrompt}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      <span>{checkpointToRestore.metadata.totalTokens.toLocaleString()} tokens</span>
+                      <span>{checkpointToRestore.metadata.fileChanges} files</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Restore mode selection */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">恢复模式</Label>
+              <RadioGroup value={restoreMode} onValueChange={(value) => setRestoreMode(value as RestoreMode)}>
+                <div className="grid gap-3">
+                  {/* Both mode */}
+                  <label
+                    htmlFor="mode-both"
+                    className={cn(
+                      "flex items-start gap-4 rounded-lg border-2 p-4 cursor-pointer transition-all",
+                      restoreMode === "both"
+                        ? "border-primary bg-primary/5"
+                        : "border-muted hover:border-muted-foreground/50"
+                    )}
+                  >
+                    <RadioGroupItem value="both" id="mode-both" className="mt-1" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="h-4 w-4" />
+                        <span className="font-medium">完整恢复</span>
+                        <Badge variant="secondary" className="text-xs">默认</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        恢复代码和对话历史到检查点状态
+                      </p>
+                      <div className="flex items-start gap-2 mt-2 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>适用于：完全回退到过去某个时间点</span>
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Conversation only mode */}
+                  <label
+                    htmlFor="mode-conversation"
+                    className={cn(
+                      "flex items-start gap-4 rounded-lg border-2 p-4 cursor-pointer transition-all",
+                      restoreMode === "conversation_only"
+                        ? "border-primary bg-primary/5"
+                        : "border-muted hover:border-muted-foreground/50"
+                    )}
+                  >
+                    <RadioGroupItem value="conversation_only" id="mode-conversation" className="mt-1" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        <span className="font-medium">仅恢复对话</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        恢复对话历史，保持当前代码状态不变
+                      </p>
+                      <div className="flex items-start gap-2 mt-2 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>适用于：想用不同方式提问，但保留已完成的代码修改</span>
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Code only mode */}
+                  <label
+                    htmlFor="mode-code"
+                    className={cn(
+                      "flex items-start gap-4 rounded-lg border-2 p-4 cursor-pointer transition-all",
+                      restoreMode === "code_only"
+                        ? "border-primary bg-primary/5"
+                        : "border-muted hover:border-muted-foreground/50"
+                    )}
+                  >
+                    <RadioGroupItem value="code_only" id="mode-code" className="mt-1" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <FileCode className="h-4 w-4" />
+                        <span className="font-medium">仅恢复代码</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        恢复文件状态，保持对话历史不变
+                      </p>
+                      <div className="flex items-start gap-2 mt-2 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>适用于：撤销错误的代码改动，但不丢失讨论内容</span>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Bash operations warning */}
+            {checkpointToRestore?.metadata.hasBashOperations && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Bash 操作警告</AlertTitle>
+                <AlertDescription>
+                  此检查点包含 Bash 命令操作，其副作用（如 npm install、git 操作）可能未完全跟踪。
+                  恢复后请验证项目状态。
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Safety info */}
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>自动备份</AlertTitle>
+              <AlertDescription>
+                恢复前会自动创建当前状态的备份检查点，您可以随时回退到此刻。
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRestoreDialog(false);
+                setCheckpointToRestore(null);
+              }}
+              disabled={isLoading}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={confirmRestore}
+              disabled={isLoading}
+            >
+              {isLoading ? "恢复中..." : "确认恢复"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}; 
+};

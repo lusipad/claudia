@@ -264,7 +264,25 @@ export interface CheckpointMetadata {
   userPrompt: string;
   fileChanges: number;
   snapshotSize: number;
+  /** Type of checkpoint (auto/manual/pre-restore) */
+  checkpointType?: CheckpointType;
+  /** Whether this checkpoint contains bash operations */
+  hasBashOperations?: boolean;
+  /** Whether external changes may have occurred */
+  mayHaveExternalChanges?: boolean;
+  /** Retention period in days (default: 30) */
+  retentionDays?: number;
 }
+
+/**
+ * Type of checkpoint (aligns with official Claude Code Rewind)
+ */
+export type CheckpointType = 'auto' | 'manual' | 'pre_restore';
+
+/**
+ * Restore mode for checkpoint restoration (aligns with official Claude Code Rewind)
+ */
+export type RestoreMode = 'both' | 'conversation_only' | 'code_only';
 
 /**
  * Represents a file snapshot at a checkpoint
@@ -1189,6 +1207,32 @@ export const api = {
   },
 
   /**
+   * Restores a session to a specific checkpoint with restore mode
+   * (aligns with official Claude Code Rewind functionality)
+   *
+   * @param checkpointId - ID of the checkpoint to restore
+   * @param sessionId - Current session ID
+   * @param projectId - Project ID
+   * @param projectPath - Path to the project
+   * @param mode - Restore mode: 'both' (full), 'conversation_only', or 'code_only'
+   */
+  async restoreCheckpointWithMode(
+    checkpointId: string,
+    sessionId: string,
+    projectId: string,
+    projectPath: string,
+    mode: RestoreMode
+  ): Promise<CheckpointResult> {
+    return invoke("restore_checkpoint_with_mode", {
+      checkpointId,
+      sessionId,
+      projectId,
+      projectPath,
+      mode
+    });
+  },
+
+  /**
    * Lists all checkpoints for a session
    */
   async listCheckpoints(
@@ -1342,6 +1386,53 @@ export const api = {
       });
     } catch (error) {
       console.error("Failed to cleanup old checkpoints:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Triggers cleanup of expired checkpoints (time-based retention)
+   * This aligns with official Claude Code Rewind's 30-day retention
+   */
+  async cleanupExpiredCheckpoints(
+    sessionId: string,
+    projectId: string,
+    projectPath: string
+  ): Promise<number> {
+    try {
+      return await invoke<number>("cleanup_expired_checkpoints", {
+        sessionId,
+        projectId,
+        projectPath
+      });
+    } catch (error) {
+      console.error("Failed to cleanup expired checkpoints:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Gets storage statistics for checkpoints
+   */
+  async getCheckpointStorageStats(
+    sessionId: string,
+    projectId: string,
+    projectPath: string
+  ): Promise<{
+    totalCheckpoints: number;
+    totalSizeBytes: number;
+    contentPoolSizeBytes: number;
+    oldestCheckpoint: string | null;
+    newestCheckpoint: string | null;
+  }> {
+    try {
+      return await invoke("get_checkpoint_storage_stats", {
+        sessionId,
+        projectId,
+        projectPath
+      });
+    } catch (error) {
+      console.error("Failed to get checkpoint storage stats:", error);
       throw error;
     }
   },

@@ -7,7 +7,9 @@ import {
   Trash2,
   HardDrive,
   AlertCircle,
-  Loader2
+  Loader2,
+  Settings,
+  Database
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { SelectComponent, type SelectOption } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type CheckpointStrategy } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -43,12 +46,23 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState("general");
   const [autoCheckpointEnabled, setAutoCheckpointEnabled] = useState(true);
   const [checkpointStrategy, setCheckpointStrategy] = useState<CheckpointStrategy>("smart");
   const [totalCheckpoints, setTotalCheckpoints] = useState(0);
   const [keepCount, setKeepCount] = useState(10);
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [autoCleanupEnabled, setAutoCleanupEnabled] = useState(true);
+  const [storageStats, setStorageStats] = useState<{
+    totalCheckpoints: number;
+    totalSizeBytes: number;
+    contentPoolSizeBytes: number;
+    oldestCheckpoint: string | null;
+    newestCheckpoint: string | null;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCleaningExpired, setIsCleaningExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -67,17 +81,30 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const settings = await api.getCheckpointSettings(sessionId, projectId, projectPath);
       setAutoCheckpointEnabled(settings.auto_checkpoint_enabled);
       setCheckpointStrategy(settings.checkpoint_strategy);
       setTotalCheckpoints(settings.total_checkpoints);
+
+      // Load storage stats
+      const stats = await api.getCheckpointStorageStats(sessionId, projectId, projectPath);
+      setStorageStats(stats);
     } catch (err) {
       console.error("Failed to load checkpoint settings:", err);
       setError(t("checkpoint.loadFailed"));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper function to format bytes to human-readable format
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
   const handleSaveSettings = async () => {
@@ -109,17 +136,17 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
       setIsLoading(true);
       setError(null);
       setSuccessMessage(null);
-      
+
       const removed = await api.cleanupOldCheckpoints(
         sessionId,
         projectId,
         projectPath,
         keepCount
       );
-      
+
       setSuccessMessage(`Removed ${removed} old checkpoints`);
       setTimeout(() => setSuccessMessage(null), 3000);
-      
+
       // Reload settings to get updated count
       await loadSettings();
     } catch (err) {
@@ -127,6 +154,35 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
       setError(t("checkpoint.cleanupFailed"));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCleanupExpired = async () => {
+    try {
+      setIsCleaningExpired(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const removed = await api.cleanupExpiredCheckpoints(
+        sessionId,
+        projectId,
+        projectPath
+      );
+
+      if (removed > 0) {
+        setSuccessMessage(`Removed ${removed} expired checkpoints`);
+      } else {
+        setSuccessMessage('No expired checkpoints to remove');
+      }
+      setTimeout(() => setSuccessMessage(null), 3000);
+
+      // Reload settings to get updated count
+      await loadSettings();
+    } catch (err) {
+      console.error("Failed to cleanup expired checkpoints:", err);
+      setError(t("checkpoint.cleanupFailed"));
+    } finally {
+      setIsCleaningExpired(false);
     }
   };
 
@@ -189,116 +245,231 @@ export const CheckpointSettings: React.FC<CheckpointSettingsProps> = ({
         </motion.div>
       )}
 
-      {/* Main Settings Card */}
-      <Card className="p-5 space-y-4">
-        {/* Auto-checkpoint toggle */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="auto-checkpoint" className="text-label">{t("checkpoint.autoCheckpoint")}</Label>
-            <p className="text-caption text-muted-foreground">
-              {t("checkpoint.autoCheckpointDesc")}
-            </p>
-          </div>
-          <Switch
-            id="auto-checkpoint"
-            checked={autoCheckpointEnabled}
-            onCheckedChange={setAutoCheckpointEnabled}
-            disabled={isLoading}
-          />
-        </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="general" className="gap-2">
+            <Settings className="h-4 w-4" />
+            {t("checkpoint.tabs.general")}
+          </TabsTrigger>
+          <TabsTrigger value="storage" className="gap-2">
+            <Database className="h-4 w-4" />
+            {t("checkpoint.tabs.storage")}
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Checkpoint strategy */}
-        <div className="space-y-2">
-          <Label htmlFor="strategy" className="text-label">{t("checkpoint.strategy")}</Label>
-          <SelectComponent
-            value={checkpointStrategy}
-            onValueChange={(value: string) => setCheckpointStrategy(value as CheckpointStrategy)}
-            options={strategyOptions}
-            disabled={isLoading || !autoCheckpointEnabled}
-          />
-          <p className="text-caption text-muted-foreground">
-            {checkpointStrategy === "manual" && t("checkpoint.strategyDescriptions.manual")}
-            {checkpointStrategy === "per_prompt" && t("checkpoint.strategyDescriptions.perPrompt")}
-            {checkpointStrategy === "per_tool_use" && t("checkpoint.strategyDescriptions.perToolUse")}
-            {checkpointStrategy === "smart" && t("checkpoint.strategyDescriptions.smart")}
-          </p>
-        </div>
-
-        {/* Save button */}
-        <motion.div
-          whileTap={{ scale: 0.97 }}
-          transition={{ duration: 0.15 }}
-        >
-          <Button
-            onClick={handleSaveSettings}
-            disabled={isLoading || isSaving}
-            className="w-full"
-            size="default"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {t("checkpoint.saving")}
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                {t("checkpoint.saveSettings")}
-              </>
-            )}
-          </Button>
-        </motion.div>
-      </Card>
-
-      {/* Storage Management Card */}
-      <Card className="p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-label">{t("checkpoint.management")}</Label>
+        {/* General Settings Tab */}
+        <TabsContent value="general" className="mt-4 space-y-4">
+          <Card className="p-5 space-y-4">
+            {/* Auto-checkpoint toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="auto-checkpoint" className="text-label">{t("checkpoint.autoCheckpoint")}</Label>
+                <p className="text-caption text-muted-foreground">
+                  {t("checkpoint.autoCheckpointDesc")}
+                </p>
+              </div>
+              <Switch
+                id="auto-checkpoint"
+                checked={autoCheckpointEnabled}
+                onCheckedChange={setAutoCheckpointEnabled}
+                disabled={isLoading}
+              />
             </div>
-            <p className="text-caption text-muted-foreground">
-              {t("checkpoint.totalCheckpoints")} <span className="font-medium text-foreground">{totalCheckpoints}</span>
-            </p>
-          </div>
-        </div>
 
-        {/* Cleanup settings */}
-        <div className="space-y-2">
-          <Label htmlFor="keep-count" className="text-label">{t("checkpoint.keepCount")}</Label>
-          <div className="flex gap-2">
-            <Input
-              id="keep-count"
-              type="number"
-              min="1"
-              max="100"
-              value={keepCount}
-              onChange={(e) => setKeepCount(parseInt(e.target.value) || 10)}
-              disabled={isLoading}
-              className="flex-1 h-9"
-            />
+            {/* Checkpoint strategy */}
+            <div className="space-y-2">
+              <Label htmlFor="strategy" className="text-label">{t("checkpoint.strategy")}</Label>
+              <SelectComponent
+                value={checkpointStrategy}
+                onValueChange={(value: string) => setCheckpointStrategy(value as CheckpointStrategy)}
+                options={strategyOptions}
+                disabled={isLoading || !autoCheckpointEnabled}
+              />
+              <p className="text-caption text-muted-foreground">
+                {checkpointStrategy === "manual" && t("checkpoint.strategyDescriptions.manual")}
+                {checkpointStrategy === "per_prompt" && t("checkpoint.strategyDescriptions.perPrompt")}
+                {checkpointStrategy === "per_tool_use" && t("checkpoint.strategyDescriptions.perToolUse")}
+                {checkpointStrategy === "smart" && t("checkpoint.strategyDescriptions.smart")}
+              </p>
+            </div>
+
+            {/* Save button */}
             <motion.div
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.15 }}
             >
               <Button
-                variant="outline"
-                onClick={handleCleanup}
-                disabled={isLoading || totalCheckpoints <= keepCount}
-                size="sm"
-                className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
+                onClick={handleSaveSettings}
+                disabled={isLoading || isSaving}
+                className="w-full"
+                size="default"
               >
-                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                {t("checkpoint.cleanupOld")}
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {t("checkpoint.saving")}
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    {t("checkpoint.saveSettings")}
+                  </>
+                )}
               </Button>
             </motion.div>
-          </div>
-          <p className="text-caption text-muted-foreground">
-            {t("checkpoint.cleanupOldDesc")} {keepCount}
-          </p>
-        </div>
-      </Card>
+          </Card>
+        </TabsContent>
+
+        {/* Storage & Cleanup Tab */}
+        <TabsContent value="storage" className="mt-4 space-y-4">
+          {/* Storage Statistics Card */}
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-label">{t("checkpoint.management")}</Label>
+                </div>
+                <p className="text-caption text-muted-foreground">
+                  {t("checkpoint.totalCheckpoints")} <span className="font-medium text-foreground">{totalCheckpoints}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Storage Statistics */}
+            {storageStats && (
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-md bg-muted/50 border border-border">
+                <div className="space-y-0.5">
+                  <p className="text-caption text-muted-foreground">{t("checkpoint.storageStats.totalSize")}</p>
+                  <p className="text-label font-medium">{formatBytes(storageStats.totalSizeBytes)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-caption text-muted-foreground">{t("checkpoint.storageStats.contentPool")}</p>
+                  <p className="text-label font-medium">{formatBytes(storageStats.contentPoolSizeBytes)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-caption text-muted-foreground">{t("checkpoint.storageStats.oldest")}</p>
+                  <p className="text-label font-medium">
+                    {storageStats.oldestCheckpoint
+                      ? new Date(storageStats.oldestCheckpoint).toLocaleDateString()
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-caption text-muted-foreground">{t("checkpoint.storageStats.newest")}</p>
+                  <p className="text-label font-medium">
+                    {storageStats.newestCheckpoint
+                      ? new Date(storageStats.newestCheckpoint).toLocaleDateString()
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Cleanup Settings Card */}
+          <Card className="p-5 space-y-4">
+            {/* Count-based cleanup */}
+            <div className="space-y-2">
+              <Label htmlFor="keep-count" className="text-label">{t("checkpoint.keepCount")}</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="keep-count"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={keepCount}
+                  onChange={(e) => setKeepCount(parseInt(e.target.value) || 10)}
+                  disabled={isLoading}
+                  className="flex-1 h-9"
+                />
+                <motion.div
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Button
+                    variant="outline"
+                    onClick={handleCleanup}
+                    disabled={isLoading || totalCheckpoints <= keepCount}
+                    size="sm"
+                    className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    {t("checkpoint.cleanupOld")}
+                  </Button>
+                </motion.div>
+              </div>
+              <p className="text-caption text-muted-foreground">
+                {t("checkpoint.cleanupOldDesc")} {keepCount}
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-border" />
+
+            {/* Auto-cleanup toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="auto-cleanup" className="text-label">{t("checkpoint.autoCleanup")}</Label>
+                <p className="text-caption text-muted-foreground">
+                  {t("checkpoint.autoCleanupDesc")}
+                </p>
+              </div>
+              <Switch
+                id="auto-cleanup"
+                checked={autoCleanupEnabled}
+                onCheckedChange={setAutoCleanupEnabled}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Retention period */}
+            <div className="space-y-2">
+              <Label htmlFor="retention-days" className="text-label">{t("checkpoint.retentionPeriod")}</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="retention-days"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={retentionDays}
+                  onChange={(e) => setRetentionDays(parseInt(e.target.value) || 30)}
+                  disabled={isLoading || !autoCleanupEnabled}
+                  className="flex-1 h-9"
+                />
+                <motion.div
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Button
+                    variant="outline"
+                    onClick={handleCleanupExpired}
+                    disabled={isCleaningExpired || isLoading}
+                    size="sm"
+                    className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
+                  >
+                    {isCleaningExpired ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        {t("checkpoint.cleaning")}
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        {t("checkpoint.cleanNow")}
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
+              </div>
+              <p className="text-caption text-muted-foreground">
+                {t("checkpoint.retentionDesc", { days: retentionDays })}
+              </p>
+            </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </motion.div>
   );
 }; 

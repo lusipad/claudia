@@ -25,6 +25,7 @@ import { FloatingPromptInput, type FloatingPromptInputRef, type ThinkingMode } f
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TimelineNavigator } from "./TimelineNavigator";
 import { CheckpointSettings } from "./CheckpointSettings";
+import { RewindPanel } from "./RewindPanel";
 import { SlashCommandsManager } from "./SlashCommandsManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { TooltipProvider, TooltipSimple } from "@/components/ui/tooltip-modern";
@@ -32,7 +33,7 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { WebviewPreview } from "./WebviewPreview";
 import type { ClaudeStreamMessage } from "./AgentExecution";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useTrackEvent, useComponentMetrics, useWorkflowTracking } from "@/hooks";
+import { useTrackEvent, useComponentMetrics, useWorkflowTracking, useDoubleEscape } from "@/hooks";
 import { SessionPersistenceService } from "@/services/sessionPersistence";
 
 const TIMELINE_PANEL_WIDTH = 384;
@@ -417,6 +418,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
   const [timelineVersion, setTimelineVersion] = useState(0);
+  const [showRewindPanel, setShowRewindPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showForkDialog, setShowForkDialog] = useState(false);
   const [showSlashCommandsSettings, setShowSlashCommandsSettings] = useState(false);
@@ -602,7 +604,14 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   useComponentMetrics('ClaudeCodeSession');
   // const aiTracking = useAIInteractionTracking('sonnet'); // Default model
   const workflowTracking = useWorkflowTracking('claude_session');
-  
+
+  // Double Esc to open Rewind panel (aligns with official Claude Code)
+  useDoubleEscape(() => {
+    setShowRewindPanel(true);
+  }, {
+    enabled: !!extractedSessionInfo?.sessionId && !!extractedSessionInfo?.projectId,
+  });
+
   // Call onProjectPathChange when component mounts with initial path
   useEffect(() => {
     if (onProjectPathChange && projectPath) {
@@ -1116,7 +1125,37 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       if (effectiveSession && !claudeSessionId) {
         setClaudeSessionId(effectiveSession.id);
       }
-      
+
+      // --------------------------------------------------------------------
+      // Auto-checkpoint logic (before sending prompt - aligns with official Rewind)
+      // --------------------------------------------------------------------
+      if (effectiveSession) {
+        try {
+          const settings = await api.getCheckpointSettings(
+            effectiveSession.id,
+            effectiveSession.project_id,
+            projectPath
+          );
+
+          // Create checkpoint before sending prompt if enabled and strategy is per_prompt
+          if (settings.auto_checkpoint_enabled &&
+              (settings.checkpoint_strategy === 'per_prompt' ||
+               settings.checkpoint_strategy === 'smart')) {
+            await api.checkAutoCheckpoint(
+              effectiveSession.id,
+              effectiveSession.project_id,
+              projectPath,
+              displayPrompt
+            );
+            // Reload timeline to show new checkpoint
+            setTimelineVersion((v) => v + 1);
+          }
+        } catch (err) {
+          console.error('Failed to create auto checkpoint before prompt:', err);
+          // Don't block the prompt if checkpoint fails
+        }
+      }
+
       // Only clean up and set up new listeners if not already listening
       if (!isListeningRef.current) {
         // Clean up previous listeners
@@ -1417,29 +1456,6 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               has_pending_prompts: queuedPrompts.length > 0,
               pending_prompts_count: queuedPrompts.length,
             });
-          }
-
-          if (effectiveSession && success) {
-            try {
-              const settings = await api.getCheckpointSettings(
-                effectiveSession.id,
-                effectiveSession.project_id,
-                projectPath
-              );
-
-              if (settings.auto_checkpoint_enabled) {
-                await api.checkAutoCheckpoint(
-                  effectiveSession.id,
-                  effectiveSession.project_id,
-                  projectPath,
-                  displayPrompt
-                );
-                // Reload timeline to show new checkpoint
-                setTimelineVersion((v) => v + 1);
-              }
-            } catch (err) {
-              console.error('Failed to check auto checkpoint:', err);
-            }
           }
 
           // Process queued prompts after completion
@@ -2743,6 +2759,18 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Rewind Panel - Quick access with double Esc */}
+      {effectiveSession && (
+        <RewindPanel
+          open={showRewindPanel}
+          onClose={() => setShowRewindPanel(false)}
+          sessionId={effectiveSession.id}
+          projectId={effectiveSession.project_id}
+          projectPath={projectPath}
+          currentMessageIndex={messages.length - 1}
+        />
       )}
       </div>
     </TooltipProvider>

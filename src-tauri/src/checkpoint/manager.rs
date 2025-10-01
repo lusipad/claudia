@@ -9,8 +9,9 @@ use tokio::sync::RwLock;
 
 use super::{
     storage::{self, CheckpointStorage},
-    Checkpoint, CheckpointMetadata, CheckpointPaths, CheckpointResult, CheckpointStrategy,
-    FileSnapshot, FileState, FileTracker, SessionTimeline,
+    Checkpoint, CheckpointMetadata, CheckpointPaths, CheckpointResult, CheckpointStorageStats,
+    CheckpointStrategy, CheckpointType, FileSnapshot, FileState, FileTracker, RestoreMode,
+    SessionTimeline,
 };
 
 /// Manages checkpoint operations for a session
@@ -22,6 +23,7 @@ pub struct CheckpointManager {
     pub storage: Arc<CheckpointStorage>,
     timeline: Arc<RwLock<SessionTimeline>>,
     current_messages: Arc<RwLock<Vec<String>>>, // JSONL messages
+    has_bash_operations: Arc<RwLock<bool>>,     // Track bash operations
 }
 
 impl CheckpointManager {
@@ -57,6 +59,7 @@ impl CheckpointManager {
             storage,
             timeline: Arc::new(RwLock::new(timeline)),
             current_messages: Arc::new(RwLock::new(Vec::new())),
+            has_bash_operations: Arc::new(RwLock::new(false)),
         })
     }
 
@@ -172,6 +175,10 @@ impl CheckpointManager {
         // Simple heuristic: if command contains file-modifying operations
         for cmd in &file_commands {
             if command.contains(cmd) {
+                // Mark that we have bash operations
+                let mut has_bash = self.has_bash_operations.write().await;
+                *has_bash = true;
+
                 // Mark all tracked files as potentially modified
                 let mut tracker = self.file_tracker.write().await;
                 for (_, state) in tracker.tracked_files.iter_mut() {
@@ -189,6 +196,17 @@ impl CheckpointManager {
         &self,
         description: Option<String>,
         parent_checkpoint_id: Option<String>,
+    ) -> Result<CheckpointResult> {
+        self.create_checkpoint_with_type(description, parent_checkpoint_id, CheckpointType::Manual)
+            .await
+    }
+
+    /// Create a checkpoint with specific type
+    pub async fn create_checkpoint_with_type(
+        &self,
+        description: Option<String>,
+        parent_checkpoint_id: Option<String>,
+        checkpoint_type: CheckpointType,
     ) -> Result<CheckpointResult> {
         let messages = self.current_messages.read().await;
         let message_index = messages.len().saturating_sub(1);
@@ -240,6 +258,9 @@ impl CheckpointManager {
         // Create file snapshots
         let file_snapshots = self.create_file_snapshots(&checkpoint_id).await?;
 
+        // Get bash operations flag
+        let has_bash_operations = *self.has_bash_operations.read().await;
+
         // Generate checkpoint struct
         let checkpoint = Checkpoint {
             id: checkpoint_id.clone(),
@@ -266,6 +287,10 @@ impl CheckpointManager {
                     &messages.join("\n"),
                     &file_snapshots,
                 ),
+                checkpoint_type,
+                has_bash_operations,
+                may_have_external_changes: false, // TODO: implement external change detection
+                retention_days: 30,
             },
         };
 
@@ -297,6 +322,10 @@ impl CheckpointManager {
         for (_, state) in tracker.tracked_files.iter_mut() {
             state.is_modified = false;
         }
+
+        // Reset bash operations flag
+        let mut has_bash = self.has_bash_operations.write().await;
+        *has_bash = false;
 
         Ok(result)
     }
@@ -450,10 +479,230 @@ impl CheckpointManager {
 
     /// Restore a checkpoint
     pub async fn restore_checkpoint(&self, checkpoint_id: &str) -> Result<CheckpointResult> {
+        self.restore_checkpoint_with_mode(checkpoint_id, RestoreMode::Both)
+            .await
+    }
+
+    /// Restore a checkpoint with specific mode (aligns with official Claude Code Rewind)
+    pub async fn restore_checkpoint_with_mode(
+        &self,
+        checkpoint_id: &str,
+        mode: RestoreMode,
+    ) -> Result<CheckpointResult> {
+        log::info!(
+            "Restoring checkpoint {} with mode: {:?}",
+            checkpoint_id,
+            mode
+        );
+
         // Load checkpoint data
         let (checkpoint, file_snapshots, messages) =
             self.storage
                 .load_checkpoint(&self.project_id, &self.session_id, checkpoint_id)?;
+
+        match mode {
+            RestoreMode::Both => {
+                self.restore_both(&checkpoint, file_snapshots, &messages)
+                    .await
+            }
+            RestoreMode::ConversationOnly => {
+                self.restore_conversation_only(&checkpoint, &messages)
+                    .await
+            }
+            RestoreMode::CodeOnly => {
+                self.restore_code_only(&checkpoint, file_snapshots).await
+            }
+        }
+    }
+
+    /// Restore conversation only, keep current code state
+    async fn restore_conversation_only(
+        &self,
+        checkpoint: &Checkpoint,
+        messages: &str,
+    ) -> Result<CheckpointResult> {
+        log::info!(
+            "Restoring conversation only for checkpoint {}",
+            checkpoint.id
+        );
+
+        // Update current messages
+        let mut current_messages = self.current_messages.write().await;
+        current_messages.clear();
+        for line in messages.lines() {
+            current_messages.push(line.to_string());
+        }
+
+        // Update timeline
+        let mut timeline = self.timeline.write().await;
+        timeline.current_checkpoint_id = Some(checkpoint.id.clone());
+
+        log::info!("Conversation restored successfully, code state preserved");
+
+        Ok(CheckpointResult {
+            checkpoint: checkpoint.clone(),
+            files_processed: 0, // No files modified
+            warnings: vec!["代码状态未改变，仅恢复了对话历史".to_string()],
+        })
+    }
+
+    /// Restore code only, keep conversation history
+    async fn restore_code_only(
+        &self,
+        checkpoint: &Checkpoint,
+        file_snapshots: Vec<FileSnapshot>,
+    ) -> Result<CheckpointResult> {
+        log::info!("Restoring code only for checkpoint {}", checkpoint.id);
+
+        let mut warnings = Vec::new();
+        let mut files_processed = 0;
+
+        // First, collect all files currently in the project to handle deletions
+        fn collect_all_project_files(
+            dir: &std::path::Path,
+            base: &std::path::Path,
+            files: &mut Vec<std::path::PathBuf>,
+        ) -> Result<(), std::io::Error> {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip hidden directories like .git
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with('.') {
+                            continue;
+                        }
+                    }
+                    collect_all_project_files(&path, base, files)?;
+                } else if path.is_file() {
+                    // Compute relative path from project root
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        files.push(rel.to_path_buf());
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let mut current_files = Vec::new();
+        let _ =
+            collect_all_project_files(&self.project_path, &self.project_path, &mut current_files);
+
+        // Create a set of files that should exist after restore
+        let mut checkpoint_files = std::collections::HashSet::new();
+        for snapshot in &file_snapshots {
+            if !snapshot.is_deleted {
+                checkpoint_files.insert(snapshot.file_path.clone());
+            }
+        }
+
+        // Delete files that exist now but shouldn't exist in the checkpoint
+        for current_file in current_files {
+            if !checkpoint_files.contains(&current_file) {
+                // This file exists now but not in the checkpoint, so delete it
+                let full_path = self.project_path.join(&current_file);
+                match fs::remove_file(&full_path) {
+                    Ok(_) => {
+                        files_processed += 1;
+                        log::info!("Deleted file not in checkpoint: {:?}", current_file);
+                    }
+                    Err(e) => {
+                        warnings.push(format!(
+                            "Failed to delete {}: {}",
+                            current_file.display(),
+                            e
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Clean up empty directories
+        fn remove_empty_dirs(
+            dir: &std::path::Path,
+            base: &std::path::Path,
+        ) -> Result<bool, std::io::Error> {
+            if dir == base {
+                return Ok(false); // Don't remove the base directory
+            }
+
+            let mut is_empty = true;
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    if !remove_empty_dirs(&path, base)? {
+                        is_empty = false;
+                    }
+                } else {
+                    is_empty = false;
+                }
+            }
+
+            if is_empty {
+                fs::remove_dir(dir)?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+
+        // Clean up any empty directories left after file deletion
+        let _ = remove_empty_dirs(&self.project_path, &self.project_path);
+
+        // Restore files from checkpoint
+        for snapshot in &file_snapshots {
+            match self.restore_file_snapshot(snapshot).await {
+                Ok(_) => files_processed += 1,
+                Err(e) => warnings.push(format!(
+                    "Failed to restore {}: {}",
+                    snapshot.file_path.display(),
+                    e
+                )),
+            }
+        }
+
+        // Update timeline
+        let mut timeline = self.timeline.write().await;
+        timeline.current_checkpoint_id = Some(checkpoint.id.clone());
+
+        // Update file tracker
+        let mut tracker = self.file_tracker.write().await;
+        tracker.tracked_files.clear();
+        for snapshot in &file_snapshots {
+            if !snapshot.is_deleted {
+                tracker.tracked_files.insert(
+                    snapshot.file_path.clone(),
+                    FileState {
+                        last_hash: snapshot.hash.clone(),
+                        is_modified: false,
+                        last_modified: Utc::now(),
+                        exists: true,
+                    },
+                );
+            }
+        }
+
+        warnings.push("对话历史未改变，仅恢复了代码状态".to_string());
+        log::info!(
+            "Code restored successfully, conversation history preserved"
+        );
+
+        Ok(CheckpointResult {
+            checkpoint: checkpoint.clone(),
+            files_processed,
+            warnings,
+        })
+    }
+
+    /// Restore both code and conversation (full restore)
+    async fn restore_both(
+        &self,
+        checkpoint: &Checkpoint,
+        file_snapshots: Vec<FileSnapshot>,
+        messages: &str,
+    ) -> Result<CheckpointResult> {
+        log::info!("Performing full restore for checkpoint {}", checkpoint.id);
 
         // First, collect all files currently in the project to handle deletions
         fn collect_all_project_files(
@@ -572,7 +821,7 @@ impl CheckpointManager {
 
         // Update timeline
         let mut timeline = self.timeline.write().await;
-        timeline.current_checkpoint_id = Some(checkpoint_id.to_string());
+        timeline.current_checkpoint_id = Some(checkpoint.id.clone());
 
         // Update file tracker
         let mut tracker = self.file_tracker.write().await;
@@ -783,5 +1032,24 @@ impl CheckpointManager {
             .values()
             .map(|state| state.last_modified)
             .max()
+    }
+
+    /// Clean up expired checkpoints based on retention policy
+    /// This aligns with official Claude Code Rewind's 30-day retention
+    pub async fn cleanup_expired_checkpoints(&self) -> Result<usize> {
+        let timeline = self.timeline.read().await;
+        let current_checkpoint_id = timeline.current_checkpoint_id.as_deref();
+
+        self.storage.cleanup_expired_checkpoints(
+            &self.project_id,
+            &self.session_id,
+            current_checkpoint_id,
+        )
+    }
+
+    /// Get storage statistics for checkpoints
+    pub async fn get_storage_stats(&self) -> Result<CheckpointStorageStats> {
+        self.storage
+            .get_storage_stats(&self.project_id, &self.session_id)
     }
 }
