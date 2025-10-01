@@ -418,6 +418,11 @@ export const en = {
     thinkingUltra: "Ultrathink",
     thinkingUltraDesc: "Maximum computation",
 
+    // Thinking mode warnings
+    thinkingModeWarning: "Extended thinking is currently only available in Claude Code interactive mode",
+    thinkingModeWarningDetail: "Toggle with Tab key. This feature is temporarily unavailable in GUI, waiting for official CLI parameter support.",
+    thinkingModeLearnMore: "Learn more",
+
     // Models
     modelSonnet: "Claude Sonnet 4.5",
     modelSonnetDesc: "Latest model with enhanced capabilities",

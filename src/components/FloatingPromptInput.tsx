@@ -14,12 +14,13 @@ import {
   Cpu,
   Rocket,
   FileText,
-
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TooltipProvider, TooltipSimple, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip-modern";
 import { FilePicker } from "./FilePicker";
 import { SlashCommandPicker } from "./SlashCommandPicker";
@@ -1000,8 +1001,8 @@ const FloatingPromptInputInner = (
                                 <span className={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.color}>
                                   {THINKING_MODES.find(m => m.id === selectedThinkingMode)?.icon}
                                 </span>
-                                <ThinkingModeIndicator 
-                                  level={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.level || 0} 
+                                <ThinkingModeIndicator
+                                  level={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.level || 0}
                                 />
                               </Button>
                             </TooltipTrigger>
@@ -1012,34 +1013,46 @@ const FloatingPromptInputInner = (
                           </Tooltip>
                       }
                       content={
-                        <div className="w-[280px] p-1">
-                          {THINKING_MODES.map((mode) => (
-                            <button
-                              key={mode.id}
-                              onClick={() => {
-                                setSelectedThinkingMode(mode.id);
-                                setThinkingModePickerOpen(false);
-                              }}
-                              className={cn(
-                                "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
-                                "hover:bg-accent",
-                                selectedThinkingMode === mode.id && "bg-accent"
-                              )}
-                            >
-                              <span className={cn("mt-0.5", mode.color)}>
-                                {mode.icon}
-                              </span>
-                              <div className="flex-1 space-y-1">
-                                <div className="font-medium text-sm">
-                                  {mode.name}
+                        <div className="w-[320px]">
+                          {/* Warning Alert */}
+                          <Alert className="m-2 mb-3 border-amber-500/50 bg-amber-500/10">
+                            <AlertCircle className="h-4 w-4 text-amber-500" />
+                            <AlertDescription className="text-xs ml-2">
+                              <div className="font-medium mb-1">{t("prompt.thinkingModeWarning")}</div>
+                              <div className="text-muted-foreground">{t("prompt.thinkingModeWarningDetail")}</div>
+                            </AlertDescription>
+                          </Alert>
+
+                          {/* Thinking Mode Options */}
+                          <div className="p-1">
+                            {THINKING_MODES.map((mode) => (
+                              <button
+                                key={mode.id}
+                                onClick={() => {
+                                  setSelectedThinkingMode(mode.id);
+                                  setThinkingModePickerOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
+                                  "hover:bg-accent",
+                                  selectedThinkingMode === mode.id && "bg-accent"
+                                )}
+                              >
+                                <span className={cn("mt-0.5", mode.color)}>
+                                  {mode.icon}
+                                </span>
+                                <div className="flex-1 space-y-1">
+                                  <div className="font-medium text-sm">
+                                    {mode.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {mode.description}
+                                  </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {mode.description}
-                                </div>
-                              </div>
-                              <ThinkingModeIndicator level={mode.level} />
-                            </button>
-                          ))}
+                                <ThinkingModeIndicator level={mode.level} />
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       }
                       open={thinkingModePickerOpen}
@@ -1198,34 +1211,46 @@ const FloatingPromptInputInner = (
                       </Tooltip>
                   }
                 content={
-                  <div className="w-[280px] p-1">
-                    {THINKING_MODES.map((mode) => (
-                      <button
-                        key={mode.id}
-                        onClick={() => {
-                          setSelectedThinkingMode(mode.id);
-                          setThinkingModePickerOpen(false);
-                        }}
-                        className={cn(
-                          "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
-                          "hover:bg-accent",
-                          selectedThinkingMode === mode.id && "bg-accent"
-                        )}
-                      >
-                        <span className={cn("mt-0.5", mode.color)}>
-                          {mode.icon}
-                        </span>
-                        <div className="flex-1 space-y-1">
-                          <div className="font-medium text-sm">
-                            {mode.name}
+                  <div className="w-[320px]">
+                    {/* Warning Alert */}
+                    <Alert className="m-2 mb-3 border-amber-500/50 bg-amber-500/10">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <AlertDescription className="text-xs ml-2">
+                        <div className="font-medium mb-1">{t("prompt.thinkingModeWarning")}</div>
+                        <div className="text-muted-foreground">{t("prompt.thinkingModeWarningDetail")}</div>
+                      </AlertDescription>
+                    </Alert>
+
+                    {/* Thinking Mode Options */}
+                    <div className="p-1">
+                      {THINKING_MODES.map((mode) => (
+                        <button
+                          key={mode.id}
+                          onClick={() => {
+                            setSelectedThinkingMode(mode.id);
+                            setThinkingModePickerOpen(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
+                            "hover:bg-accent",
+                            selectedThinkingMode === mode.id && "bg-accent"
+                          )}
+                        >
+                          <span className={cn("mt-0.5", mode.color)}>
+                            {mode.icon}
+                          </span>
+                          <div className="flex-1 space-y-1">
+                            <div className="font-medium text-sm">
+                              {mode.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {mode.description}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {mode.description}
-                          </div>
-                        </div>
-                        <ThinkingModeIndicator level={mode.level} />
-                      </button>
-                    ))}
+                          <ThinkingModeIndicator level={mode.level} />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 }
                 open={thinkingModePickerOpen}

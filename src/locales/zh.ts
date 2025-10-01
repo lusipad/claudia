@@ -418,6 +418,11 @@ export const zh: import("./en").TranslationResources = {
     thinkingUltra: "超级思考 (ultrathink)",
     thinkingUltraDesc: "最大计算",
 
+    // Thinking mode warnings
+    thinkingModeWarning: "扩展思考功能当前仅在 Claude Code 交互模式下可用",
+    thinkingModeWarningDetail: "通过 Tab 键切换。GUI 中暂时无法使用此功能，等待官方添加 CLI 参数支持。",
+    thinkingModeLearnMore: "了解更多",
+
     // Models
     modelSonnet: "Claude Sonnet 4.5",
     modelSonnetDesc: "最新模型，增强功能",
