@@ -11,7 +11,8 @@ import {
   Wrench,
   ListTree,
   Eye,
-  EyeOff
+  EyeOff,
+  Repeat
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,37 @@ type QueuedPrompt = {
   model: "sonnet" | "opus" | "opusplan";
   displayPrompt?: string;
   thinkingMode?: ThinkingMode;
+};
+
+// Self-feed (auto-continue) configuration
+// By default disabled. Enable by setting localStorage keys:
+//  - opcode_self_feed = '1'
+//  - opcode_self_feed_max = number (0 or unset means unlimited)
+const SELF_FEED_LS_KEY = 'opcode_self_feed';
+const SELF_FEED_MAX_LS_KEY = 'opcode_self_feed_max';
+const SELF_FEED_DELAY_MS_LS_KEY = 'opcode_self_feed_delay_ms';
+const SELF_FEED_TEXT_LS_KEY = 'opcode_self_feed_text';
+
+const readLocalStorage = (key: string): string | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeLocalStorage = (key: string, value: string | null) => {
+  try {
+    if (typeof window === 'undefined') return;
+    if (value === null) {
+      window.localStorage.removeItem(key);
+    } else {
+      window.localStorage.setItem(key, value);
+    }
+  } catch {
+    // ignore
+  }
 };
 
 const TOOLS_WITH_WIDGETS = [
@@ -452,6 +484,45 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const isMountedRef = useRef(true);
   const isListeningRef = useRef(false);
+  
+  // Self-feed (auto-continue) runtime state
+  const selfFeedConfigRef = useRef<{ enabled: boolean; max: number }>({
+    enabled: readLocalStorage(SELF_FEED_LS_KEY) === '1',
+    max: (() => {
+      const v = readLocalStorage(SELF_FEED_MAX_LS_KEY);
+      const n = v && /^\d+$/.test(v) ? parseInt(v, 10) : 0;
+      return Number.isFinite(n) && n > 0 ? n : 0; // 0 => unlimited
+    })(),
+  });
+  const selfFeedStateRef = useRef<{ buffer: string; steps: number; sawToolUse: boolean }>({
+    buffer: '',
+    steps: 0,
+    sawToolUse: false,
+  });
+  const lastModelRef = useRef<"sonnet" | "opus" | "opusplan">('sonnet');
+
+  // Self-feed UI controls
+  const [selfFeedPopoverOpen, setSelfFeedPopoverOpen] = useState(false);
+  const [selfFeedEnabledUI, setSelfFeedEnabledUI] = useState(selfFeedConfigRef.current.enabled);
+  const [selfFeedMaxUI, setSelfFeedMaxUI] = useState<number>(selfFeedConfigRef.current.max);
+  const [selfFeedDelayUI, setSelfFeedDelayUI] = useState<number>(() => {
+    const v = readLocalStorage(SELF_FEED_DELAY_MS_LS_KEY);
+    const n = v && /^\d+$/.test(v) ? parseInt(v, 10) : 1500;
+    return Number.isFinite(n) && n >= 0 ? n : 1500;
+  });
+  const [selfFeedTextUI, setSelfFeedTextUI] = useState<string>(() => {
+    const v = readLocalStorage(SELF_FEED_TEXT_LS_KEY);
+    const text = (v ?? '').trim();
+    return text || 'continue';
+  });
+  // Expose delay to runtime config via ref
+  if ((selfFeedConfigRef.current as any).delayMs !== selfFeedDelayUI) {
+    (selfFeedConfigRef.current as any).delayMs = selfFeedDelayUI;
+  }
+  if ((selfFeedConfigRef.current as any).text !== selfFeedTextUI) {
+    (selfFeedConfigRef.current as any).text = selfFeedTextUI;
+  }
+  const selfFeedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartTime = useRef<number>(Date.now());
   const zoomPersistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isIMEComposingRef = useRef(false);
@@ -1093,6 +1164,15 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
       effectiveSession,
       options
     });
+    // Remember last selected model and reset self-feed buffer for the new turn
+    lastModelRef.current = model;
+    // 如果存在待触发的自动继续定时器，用户手动发送时应取消
+    if (selfFeedTimeoutRef.current) {
+      clearTimeout(selfFeedTimeoutRef.current);
+      selfFeedTimeoutRef.current = null;
+    }
+    selfFeedStateRef.current.buffer = '';
+    selfFeedStateRef.current.sawToolUse = false;
     
     if (!projectPath) {
       setError("Please select a project directory first");
@@ -1297,6 +1377,50 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
             // Parse the message to get a unique identifier
             const message = JSON.parse(payload) as ClaudeStreamMessage;
 
+            // Self-feed accumulation: collect assistant text and detect tool_use
+            try {
+              if (message.type === 'assistant' && message.message?.content) {
+                const contents = Array.isArray(message.message.content)
+                  ? message.message.content
+                  : [message.message.content];
+                for (const c of contents) {
+                  if (c && (c as any).type === 'text') {
+                    const tv = typeof (c as any).text === 'string'
+                      ? (c as any).text as string
+                      : ((c as any).text?.text || '');
+                    if (tv && tv.trim()) {
+                      selfFeedStateRef.current.buffer += (selfFeedStateRef.current.buffer ? '\n' : '') + tv;
+                    }
+                  }
+                  if (c && (c as any).type === 'tool_use') {
+                    selfFeedStateRef.current.sawToolUse = true;
+                  }
+                }
+              }
+            } catch {}
+
+            // Self-feed accumulation: collect assistant text and detect tool_use
+            try {
+              if (message.type === 'assistant' && message.message?.content) {
+                const contents = Array.isArray(message.message.content)
+                  ? message.message.content
+                  : [message.message.content];
+                for (const c of contents) {
+                  if (c && (c as any).type === 'text') {
+                    const tv = typeof (c as any).text === 'string'
+                      ? (c as any).text as string
+                      : ((c as any).text?.text || '');
+                    if (tv && tv.trim()) {
+                      selfFeedStateRef.current.buffer += (selfFeedStateRef.current.buffer ? '\n' : '') + tv;
+                    }
+                  }
+                  if (c && (c as any).type === 'tool_use') {
+                    selfFeedStateRef.current.sawToolUse = true;
+                  }
+                }
+              }
+            } catch {}
+
             // Create a unique message ID for deduplication
             const messageId = message.timestamp ||
                             (message.message?.usage ? `${message.type}-${message.message.usage.input_tokens}-${message.message.usage.output_tokens}` : null) ||
@@ -1456,6 +1580,40 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               has_pending_prompts: queuedPrompts.length > 0,
               pending_prompts_count: queuedPrompts.length,
             });
+          }
+
+          // Insert auto-continue prompt ('continue') before processing queued prompts
+          try {
+            const cfg = selfFeedConfigRef.current;
+            const st = selfFeedStateRef.current;
+            const withinLimit = cfg.max === 0 || st.steps < cfg.max;
+            // 仅当队列为空时自动发送，以避免与用户排队的提示冲突
+            if (cfg.enabled && withinLimit && queuedPromptsRef.current.length === 0) {
+              // 清理上一次定时器
+              if (selfFeedTimeoutRef.current) {
+                clearTimeout(selfFeedTimeoutRef.current);
+                selfFeedTimeoutRef.current = null;
+              }
+              const delay = Math.max(0, Number((selfFeedConfigRef.current as any).delayMs ?? 1500));
+              selfFeedTimeoutRef.current = setTimeout(() => {
+                // 触发前再次确认条件仍然成立，且用户未手动发起新消息
+                if (!selfFeedConfigRef.current.enabled) return;
+                const st2 = selfFeedStateRef.current;
+                const within = selfFeedConfigRef.current.max === 0 || st2.steps < selfFeedConfigRef.current.max;
+                if (!within) return;
+                if (queuedPromptsRef.current.length > 0) return;
+                if (hasActiveSessionRef.current) return;
+                const textCfg = String((selfFeedConfigRef.current as any).text ?? 'continue').trim() || 'continue';
+                // 直接发送，而不是加入队列（队列只在加载中使用）
+                handleSendPrompt(textCfg, lastModelRef.current, { displayPrompt: textCfg, thinkingMode: 'auto' });
+                st2.steps += 1;
+                selfFeedTimeoutRef.current = null;
+              }, delay);
+            }
+          } finally {
+            // Clear buffer for next round
+            selfFeedStateRef.current.buffer = '';
+            selfFeedStateRef.current.sawToolUse = false;
           }
 
           // Process queued prompts after completion
@@ -2195,7 +2353,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                     <div className="text-xs font-medium text-muted-foreground mb-1">
                       Queued Prompts ({queuedPrompts.length})
                     </div>
-                    <TooltipSimple content={queuedPromptsCollapsed ? "Expand queue" : "Collapse queue"} side="top">
+                    <TooltipSimple content={queuedPromptsCollapsed ? t('common.expandQueue') : t('common.collapseQueue')} side="top">
                       <motion.div
                         whileTap={{ scale: 0.97 }}
                         transition={{ duration: 0.15 }}
@@ -2254,7 +2412,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               className="fixed bottom-32 right-6 z-50"
             >
               <div className="flex items-center bg-background/95 backdrop-blur-md border rounded-full shadow-lg overflow-hidden">
-                <TooltipSimple content="Scroll to top" side="top">
+                <TooltipSimple content={t('common.scrollToTop')} side="top">
                   <motion.div
                     whileTap={{ scale: 0.97 }}
                     transition={{ duration: 0.15 }}
@@ -2292,7 +2450,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   </motion.div>
                 </TooltipSimple>
                 <div className="w-px h-4 bg-border" />
-                <TooltipSimple content="Scroll to bottom" side="top">
+                <TooltipSimple content={t('common.scrollToBottom')} side="top">
                   <motion.div
                     whileTap={{ scale: 0.97 }}
                     transition={{ duration: 0.15 }}
@@ -2342,7 +2500,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
               extraMenuItems={
                 <>
                   {effectiveSession && (
-                    <TooltipSimple content="Session Timeline" side="top">
+                    <TooltipSimple content={t('common.sessionTimeline')} side="top">
                       <motion.div
                         whileTap={{ scale: 0.97 }}
                         transition={{ duration: 0.15 }}
@@ -2364,7 +2522,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                     </TooltipSimple>
                   )}
                   <>
-                    <TooltipSimple content="Adjust chat zoom" side="top">
+                    <TooltipSimple content={t('common.adjustChatZoom')} side="top">
                       <motion.div
                         whileTap={{ scale: 0.97 }}
                         transition={{ duration: 0.15 }}
@@ -2462,7 +2620,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       </DialogContent>
                     </Dialog>
                   </>
-                  <TooltipSimple content={showOutline ? "Hide outline" : outlineItems.length === 0 ? "No outline available" : "Show outline"} side="top">
+                  <TooltipSimple content={showOutline ? t('common.hideOutline') : outlineItems.length === 0 ? t('common.noOutlineAvailable') : t('common.showOutline')} side="top">
                     <motion.div
                       whileTap={{ scale: 0.97 }}
                       transition={{ duration: 0.15 }}
@@ -2487,7 +2645,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       </Button>
                     </motion.div>
                   </TooltipSimple>
-                  <TooltipSimple content={hideToolMessages ? "Show tool calls" : "Hide tool calls"} side="top">
+                  <TooltipSimple content={hideToolMessages ? t('common.showToolCalls') : t('common.hideToolCalls')} side="top">
                     <motion.div
                       whileTap={{ scale: 0.97 }}
                       transition={{ duration: 0.15 }}
@@ -2508,7 +2666,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                   {messages.length > 0 && (
                     <Popover
                       trigger={
-                        <TooltipSimple content="Copy conversation" side="top">
+                        <TooltipSimple content={t('common.copyConversation')} side="top">
                           <motion.div
                             whileTap={{ scale: 0.97 }}
                             transition={{ duration: 0.15 }}
@@ -2531,7 +2689,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                             onClick={handleCopyAsMarkdown}
                             className="w-full justify-start text-xs"
                           >
-                            Copy as Markdown
+                            {t('common.copyAsMarkdown')}
                           </Button>
                           <Button
                             variant="ghost"
@@ -2539,7 +2697,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                             onClick={handleCopyAsJsonl}
                             className="w-full justify-start text-xs"
                           >
-                            Copy as JSONL
+                            {t('common.copyAsJsonl')}
                           </Button>
                         </div>
                       }
@@ -2549,7 +2707,124 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                       align="end"
                     />
                   )}
-                  <TooltipSimple content="Checkpoint Settings" side="top">
+                  {/* Auto-continue (Self-feed) Popover */}
+                  <Popover
+                    trigger={
+                      <TooltipSimple content={t('common.autoContinue')} side="top">
+                        <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSelfFeedPopoverOpen(true)}
+                            className={cn("h-9 w-9 text-muted-foreground hover:text-foreground", selfFeedEnabledUI && "text-primary")}
+                          >
+                            <Repeat className="h-3.5 w-3.5" />
+                          </Button>
+                        </motion.div>
+                      </TooltipSimple>
+                    }
+                    content={
+                      <div className="w-64 p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium">{t('common.autoContinue')}</span>
+                          <label className="inline-flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={selfFeedEnabledUI}
+                              onChange={(e) => {
+                                const enabled = e.currentTarget.checked;
+                                setSelfFeedEnabledUI(enabled);
+                                selfFeedConfigRef.current.enabled = enabled;
+                                writeLocalStorage(SELF_FEED_LS_KEY, enabled ? '1' : null);
+                              }}
+                            />
+                            <span>{t('common.enable')}</span>
+                          </label>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">{t('common.maxSteps')}</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={Number.isFinite(selfFeedMaxUI) ? selfFeedMaxUI : 0}
+                            onChange={(e) => {
+                              const n = parseInt(e.currentTarget.value || '0', 10);
+                              if (!Number.isNaN(n) && n >= 0) {
+                                setSelfFeedMaxUI(n);
+                              }
+                            }}
+                            onBlur={() => {
+                              const max = Math.max(0, Math.floor(selfFeedMaxUI || 0));
+                              setSelfFeedMaxUI(max);
+                              selfFeedConfigRef.current.max = max;
+                              writeLocalStorage(SELF_FEED_MAX_LS_KEY, max > 0 ? String(max) : null);
+                            }}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">{t('common.delayMs')}</label>
+                          <div className="flex items-center gap-2">
+                            {[
+                              { label: '10s', value: 10000 },
+                              { label: '60s', value: 60000 },
+                              { label: '300s', value: 300000 },
+                            ].map(opt => (
+                              <Button
+                                key={opt.label}
+                                variant={selfFeedDelayUI === opt.value ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => {
+                                  setSelfFeedDelayUI(opt.value);
+                                  (selfFeedConfigRef.current as any).delayMs = opt.value;
+                                  writeLocalStorage(SELF_FEED_DELAY_MS_LS_KEY, String(opt.value));
+                                }}
+                              >
+                                {opt.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">{t('common.autoContinueText')}</label>
+                          <Input
+                            type="text"
+                            value={selfFeedTextUI}
+                            onChange={(e) => setSelfFeedTextUI(e.currentTarget.value)}
+                            onBlur={() => {
+                              const val = (selfFeedTextUI || '').trim() || 'continue';
+                              setSelfFeedTextUI(val);
+                              (selfFeedConfigRef.current as any).text = val;
+                              writeLocalStorage(SELF_FEED_TEXT_LS_KEY, val);
+                            }}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">{t('common.progress')}</span>
+                          <span className="text-xs font-mono">{selfFeedStateRef.current.steps}{selfFeedConfigRef.current.max > 0 ? ` / ${selfFeedConfigRef.current.max}` : ''}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => {
+                              selfFeedStateRef.current.steps = 0;
+                            }}
+                          >
+                            {t('common.resetCounter')}
+                          </Button>
+                        </div>
+                      </div>
+                    }
+                    open={selfFeedPopoverOpen}
+                    onOpenChange={setSelfFeedPopoverOpen}
+                    side="top"
+                    align="end"
+                  />
+                  <TooltipSimple content={t('checkpoint.title')} side="top">
                     <motion.div
                       whileTap={{ scale: 0.97 }}
                       transition={{ duration: 0.15 }}

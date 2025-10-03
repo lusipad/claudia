@@ -793,6 +793,38 @@ pub async fn execute_agent(
 }
 
 /// Creates a system binary command for agent execution
+fn is_batch_wrapper_on_windows(program: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::Path;
+        let lower = program.to_ascii_lowercase();
+        if lower.ends_with(".cmd") || lower.ends_with(".bat") {
+            return true;
+        }
+        if !lower.contains('.') {
+            if let Ok(path_env) = std::env::var("PATH") {
+                if let Some(name) = Path::new(program).file_name().and_then(|s| s.to_str()) {
+                    for dir in path_env.split(';') {
+                        let dir_path = Path::new(dir);
+                        if dir_path.join(format!("{}.cmd", name)).exists() {
+                            return true;
+                        }
+                        if dir_path.join(format!("{}.bat", name)).exists() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = program; // silence unused
+        false
+    }
+}
+
 fn create_agent_system_command(
     claude_path: &str,
     args: Vec<String>,
@@ -800,8 +832,21 @@ fn create_agent_system_command(
 ) -> Command {
     let mut cmd = create_command_with_env(claude_path);
 
+    // On Windows, escape % when calling batch wrappers to avoid cmd variable expansion
+    #[allow(unused_mut)]
+    let mut final_args = args;
+    #[cfg(windows)]
+    {
+        if is_batch_wrapper_on_windows(claude_path) {
+            final_args = final_args
+                .into_iter()
+                .map(|s| s.replace('%', "%%"))
+                .collect();
+        }
+    }
+
     // Add all arguments
-    for arg in args {
+    for arg in final_args {
         cmd.arg(arg);
     }
 

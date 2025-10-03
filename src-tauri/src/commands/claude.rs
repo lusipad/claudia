@@ -301,11 +301,58 @@ fn create_command_with_env(program: &str) -> Command {
 }
 
 /// Creates a system binary command with the given arguments
+fn is_batch_wrapper_on_windows(program: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::Path;
+        let lower = program.to_ascii_lowercase();
+        if lower.ends_with(".cmd") || lower.ends_with(".bat") {
+            return true;
+        }
+        // If no extension provided (e.g. "claude"), try to resolve on PATH
+        if !lower.contains('.') {
+            if let Ok(path_env) = std::env::var("PATH") {
+                if let Some(name) = Path::new(program).file_name().and_then(|s| s.to_str()) {
+                    for dir in path_env.split(';') {
+                        let dir_path = Path::new(dir);
+                        if dir_path.join(format!("{}.cmd", name)).exists() {
+                            return true;
+                        }
+                        if dir_path.join(format!("{}.bat", name)).exists() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = program; // silence unused
+        false
+    }
+}
+
 fn create_system_command(claude_path: &str, args: Vec<String>, project_path: &str) -> Command {
     let mut cmd = create_command_with_env(claude_path);
 
+    // On Windows, invoking a batch wrapper (e.g. claude.cmd) will interpret % as env var.
+    // Escape % -> %% to prevent "batch file arguments are invalid" when prompt contains %.
+    #[allow(unused_mut)]
+    let mut final_args = args;
+    #[cfg(windows)]
+    {
+        if is_batch_wrapper_on_windows(claude_path) {
+            final_args = final_args
+                .into_iter()
+                .map(|s| s.replace('%', "%%"))
+                .collect();
+        }
+    }
+
     // Add all arguments
-    for arg in args {
+    for arg in final_args {
         cmd.arg(arg);
     }
 
