@@ -254,6 +254,33 @@ claude --print --model sonnet --output-format stream-json \
 - 无法使用 Tab 键交互
 - 配置文件的部分设置不生效
 
+---
+
+## 🧭 模型选择与 Default 策略（新增）
+
+为避免“具体模型 ID 变化”对使用体验的影响，opcode 在 UI 中引入了“Default”模型选项，并将 Sonnet 4 与 Sonnet 4.5 拆分为可显式选择的两个版本：
+
+### 可选项
+
+- Default（推荐）
+  - 含义：动态指向“最新稳定的 Sonnet 系列”模型。
+  - 展示：UI 显示为 `Default（当前 = <解析出的具体模型>）`，例如：`Default（当前 = Sonnet 4.5 2025‑09‑29）`。
+  - 行为：在运行时解析并替换为当下配置的最新稳定 Sonnet 引擎 ID，无需用户关心具体后缀。
+
+- Sonnet 4.5（固定）
+  - 示例引擎 ID：`claude-sonnet-4-5-20250929`（以发布说明为准）。
+  - 说明：当前推荐的 Sonnet 代际，ultrathink 行为在本机验证中生效（见本文验证章节）。
+
+- Sonnet 4（固定）
+  - 示例引擎 ID：`claude-sonnet-4-YYYYMMDD`（占位示例，具体以发布说明为准）。
+  - 说明：用于与 4.5 区分的显式旧版本选择；在需要回归测试或兼容性验证时使用。
+
+### 使用建议
+
+- 一般场景请选择 `Default`，以自动跟进最新稳定 Sonnet；遇到兼容性问题再切换到 `Sonnet 4.5` 或 `Sonnet 4` 做对照。
+- 在 opcode UI/设置中选择 `Default` 即可；若通过原生 CLI 直接调用，仍需显式传入具体引擎 ID（CLI 侧不保证存在 `default` 的别名）。
+- 与本文“思考模式（ultrathink）”的结论相互独立：无论是 Sonnet 4 还是 4.5，触发 ultrathink 的关键词策略一致（仅 `ultrathink` 触发）。
+
 #### 交互模式 (CLI 原生)
 ```bash
 # 原生交互模式
