@@ -71,8 +71,18 @@ jobs:
 
           # Windows artifacts
           if [ -d "artifacts/windows-x86_64" ]; then
-            cp artifacts/windows-x86_64/*.msi release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64.msi || true
-            cp artifacts/windows-x86_64/*.exe release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64.exe || true
+            # Copy installer variants (MSI/NSIS)
+            if ls artifacts/windows-x86_64/*-installer.msi 1> /dev/null 2>&1; then
+              cp artifacts/windows-x86_64/*-installer.msi release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64_installer.msi || true
+            fi
+            if ls artifacts/windows-x86_64/*-installer.exe 1> /dev/null 2>&1; then
+              cp artifacts/windows-x86_64/*-installer.exe release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64_installer.exe || true
+            fi
+
+            # Copy portable single exe
+            if ls artifacts/windows-x86_64/*-portable.exe 1> /dev/null 2>&1; then
+              cp artifacts/windows-x86_64/*-portable.exe release-assets/opcode_${{ steps.version.outputs.version }}_windows_x86_64_portable.exe || true
+            fi
           fi
           
           # Create source code archives

@@ -11,6 +11,7 @@
     "tauri": "tauri",
     "build:dmg": "tauri build --bundles dmg",
     "build:portable": "tauri build --target x86_64-pc-windows-msvc --bundles nsis",
+    "build:portable:win": "tauri build --target x86_64-pc-windows-msvc --bundles none",
     "check": "tsc --noEmit && cd src-tauri && cargo check"
   },
   "dependencies": {
