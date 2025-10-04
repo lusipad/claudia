@@ -41,6 +41,12 @@ https://github.com/user-attachments/assets/6bceea0f-60b6-4c3e-a745-b891de00b8d0
 > - 🐛 **问题修复**：解决了一些影响中文用户的问题
 > - 🔧 **配置改进**：优化了 Claude 二进制检测和 NVM 环境支持
 
+> [!IMPORTANT]
+> **最新版本：v0.3.3（2025-10-04）**  
+> - CI 已额外产出未签名的 Windows 便携版可执行文件（`opcode-windows-x86_64-portable.exe`），与 MSI/NSIS 安装包一同发布。  
+> - `is_batch_wrapper_on_windows` 仅在 Windows 目标编译，确保跨平台执行 `cargo clippy -D warnings` 时保持通过。  
+> - 所有安装包、便携版与校验文件请前往 [GitHub Releases](https://github.com/lusipad/claudia/releases/tag/v0.3.3) 获取。
+
 ## 🌟 概述
 
 **opcode** 是一个强大的桌面应用程序，彻底改变了您与 Claude Code 的交互方式。基于 Tauri 2 构建，为管理 Claude Code 会话、创建自定义代理、跟踪使用情况等提供了美观的 GUI。
@@ -165,7 +171,11 @@ CC 代理 → 创建代理 → 配置 → 执行
 
 - **Claude Code CLI**：从 [Claude 官方网站](https://claude.ai/code) 安装
 
-### 发布版可执行文件即将发布
+### 发布下载
+
+- 可在 [v0.3.3 发布页](https://github.com/lusipad/claudia/releases/tag/v0.3.3) 获取安装包与便携版。
+- Windows 支持选择 MSI/NSIS 安装包，或下载未签名的便携式 `opcode-windows-x86_64-portable.exe`。
+- macOS 提供通用架构的 `.dmg`，Linux 则包含 `.AppImage` 与 `.deb`，所有产物均附带 `checksums.txt` 供校验。
 
 ## 🔨 从源码构建
 
@@ -330,9 +340,10 @@ brew install pkg-config
   - `.AppImage`（Linux）
   - `.dmg` 安装器（macOS）
   - `.msi` 安装器（Windows）
-  - `.exe` 安装器（Windows）
+  - `.exe` 安装器（Windows，NSIS）
+  - `opcode-windows-x86_64-portable.exe`（Windows 便携版，未签名）
 
-所有产物位于 `src-tauri/target/release/` 目录中。
+所有产物位于 `src-tauri/target/release/` 目录中。CI 发布还会将 Windows 产物复制到 `dist/windows-x86_64/`，并附带 `checksums.txt` 校验文件。
 
 ## 🛠️ 开发
 

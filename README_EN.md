@@ -34,6 +34,12 @@ https://github.com/user-attachments/assets/6bceea0f-60b6-4c3e-a745-b891de00b8d0
 > [!NOTE]
 > This project is not affiliated with, endorsed by, or sponsored by Anthropic. Claude is a trademark of Anthropic, PBC. This is an independent developer project using Claude.
 
+> [!IMPORTANT]
+> **Latest Release: v0.3.3 (2025-10-04)**  
+> - CI now publishes an unsigned standalone Windows executable (`opcode-windows-x86_64-portable.exe`) alongside MSI/NSIS installers.  
+> - Windows-only helper functions are conditionally compiled to keep `cargo clippy -D warnings` green across platforms.  
+> - All installers, portable builds, and checksums are available on the [GitHub Releases page](https://github.com/lusipad/claudia/releases/tag/v0.3.3).
+
 ## 🌟 Overview
 
 **opcode** is a powerful desktop application that transforms how you interact with Claude Code. Built with Tauri 2, it provides a beautiful GUI for managing your Claude Code sessions, creating custom agents, tracking usage, and much more.
@@ -161,7 +167,11 @@ Menu → MCP Manager → Add Server → Configure
 
 - **Claude Code CLI**: Install from [Claude's official site](https://claude.ai/code)
 
-### Release Executables Will Be Published Soon
+### Release Downloads
+
+- Download installers and portable builds from the [v0.3.3 release](https://github.com/lusipad/claudia/releases/tag/v0.3.3).
+- Windows users can choose between the signed MSI/NSIS installers and the standalone portable executable `opcode-windows-x86_64-portable.exe` (unsigned).
+- macOS includes a universal `.dmg`, while Linux provides both `.AppImage` and `.deb` packages. Each release ships with a `checksums.txt` file for integrity verification.
 
 ## 🔨 Build from Source
 
@@ -327,8 +337,9 @@ The build process creates several artifacts:
   - `.dmg` installer (macOS)
   - `.msi` installer (Windows)
   - `.exe` installer (Windows)
+  - `opcode-windows-x86_64-portable.exe` (Windows portable, unsigned)
 
-All artifacts are located in `src-tauri/target/release/`.
+All build artifacts are located in `src-tauri/target/release/` when built locally. CI releases additionally copy Windows assets into `dist/windows-x86_64/` with accompanying `checksums.txt` files.
 
 ## 🛠️ Development
 
