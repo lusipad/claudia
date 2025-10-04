@@ -11,6 +11,16 @@
 - Enhance localization fallbacks in the settings section to avoid showing raw keys
 - Adjust thinking mode options dynamically: Claude Code v2.x now exposes only “Auto” and “Ultrathink”, earlier versions keep the full list
 
+## [0.3.3] - 2025-10-04
+
+### Improvements
+- Add a standalone Windows executable build step in CI to produce an unsigned portable binary alongside installers.
+- Remove the invalid `--bundles none` invocation from the Windows workflow, speeding up builds and preventing Tauri CLI errors.
+
+### Bug Fixes
+- Guard `is_batch_wrapper_on_windows` helpers with `cfg(windows)` to satisfy `cargo clippy -D warnings` on non-Windows targets.
+- Re-run `cargo fmt` after the helper changes so formatted files stay clean in CI.
+
 ## [0.3.2] - 2025-01-27
 
 ### 🐛 Bug Fixes

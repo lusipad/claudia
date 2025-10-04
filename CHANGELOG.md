@@ -11,6 +11,16 @@
 - 优化设置页相关文案的本地化回退，避免出现原始键名
 - 根据 Claude Code 版本动态调整思考模式：v2.x 仅保留 “自动” 与 “超级思考 (ultrathink)” 选项，其他版本保留全部模式
 
+## [0.3.3] - 2025-10-04
+
+### 改进
+- CI 新增独立的 Windows 可执行文件构建步骤，便于发布未签名的便携版本。
+- 移除 Windows 工作流中无效的 `--bundles none` 调用，避免 Tauri CLI 报错并缩短构建时间。
+
+### 修复
+- 仅在 Windows 下编译 `is_batch_wrapper_on_windows` 帮助函数，解决非 Windows 目标的 Clippy `dead_code` 报错。
+- 重新运行 `cargo fmt`，确保格式化结果与 CI 保持一致。
+
 ## [0.3.2] - 2025-01-27
 
 ### 🐛 问题修复
