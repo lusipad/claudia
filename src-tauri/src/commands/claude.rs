@@ -990,16 +990,19 @@ pub async fn execute_claude_code(
 
     let claude_path = find_claude_binary(&app)?;
 
-    let args = vec![
+    let mut args = vec![
         "-p".to_string(),
         prompt.clone(),
-        "--model".to_string(),
-        model.clone(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
+    if model != "default" {
+        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        args.push("--model".to_string());
+        args.push(selected_model);
+    }
 
     let cmd = create_system_command(&claude_path, args, &project_path);
     spawn_claude_process(app, cmd, prompt, model, project_path).await
@@ -1021,17 +1024,20 @@ pub async fn continue_claude_code(
 
     let claude_path = find_claude_binary(&app)?;
 
-    let args = vec![
+    let mut args = vec![
         "-c".to_string(), // Continue flag
         "-p".to_string(),
         prompt.clone(),
-        "--model".to_string(),
-        model.clone(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
+    if model != "default" {
+        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        args.push("--model".to_string());
+        args.push(selected_model);
+    }
 
     let cmd = create_system_command(&claude_path, args, &project_path);
     spawn_claude_process(app, cmd, prompt, model, project_path).await
@@ -1055,18 +1061,21 @@ pub async fn resume_claude_code(
 
     let claude_path = find_claude_binary(&app)?;
 
-    let args = vec![
+    let mut args = vec![
         "--resume".to_string(),
         session_id.clone(),
         "-p".to_string(),
         prompt.clone(),
-        "--model".to_string(),
-        model.clone(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
+    if model != "default" {
+        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        args.push("--model".to_string());
+        args.push(selected_model);
+    }
 
     let cmd = create_system_command(&claude_path, args, &project_path);
     spawn_claude_process(app, cmd, prompt, model, project_path).await

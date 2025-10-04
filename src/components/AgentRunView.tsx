@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { 
@@ -9,7 +9,8 @@ import {
   Hash,
   DollarSign,
   Bot,
-  StopCircle
+  StopCircle,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +56,24 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copyPopoverOpen, setCopyPopoverOpen] = useState(false);
+  const [modelInfoRefresh, setModelInfoRefresh] = useState(0);
+
+  // Compute detected engine from messages for info-only display
+  const detectedModelId = useMemo(() => {
+    for (const m of messages) {
+      if (
+        m.type === 'system' &&
+        (m as any).subtype === 'init' &&
+        typeof (m as any).model === 'string' &&
+        (m as any).model.trim()
+      ) {
+        return (m as any).model as string;
+      }
+    }
+    return null;
+  }, [messages, modelInfoRefresh]);
+
+  // Note: For Default model, UI keeps the label as "Default" without auto-renaming.
 
   useEffect(() => {
     loadRun();
@@ -130,7 +149,8 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
     
     let markdown = `# Agent Run: ${run.agent_name}\n\n`;
     markdown += `**Task:** ${run.task}\n`;
-    markdown += `**Model:** ${run.model}\n`;
+    const modelLine = run.model === 'default' ? 'Default' : run.model;
+    markdown += `**Model:** ${modelLine}\n`;
     markdown += `**Status:** ${run.status}\n`;
     if (run.metrics) {
       markdown += `**Tokens:** ${run.metrics.total_tokens || 'N/A'}\n`;
@@ -348,14 +368,31 @@ export const AgentRunView: React.FC<AgentRunViewProps> = ({
         {/* Run Details */}
         <Card className="m-4">
           <CardContent className="p-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">Task:</h3>
-                <p className="text-sm text-muted-foreground flex-1">{run.task}</p>
-                <Badge variant="outline" className="text-xs">
-                  {run.model === 'opus' ? 'Claude 4 Opus' : 'Claude 4 Sonnet'}
-                </Badge>
-              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium">Task:</h3>
+                  <p className="text-sm text-muted-foreground flex-1">{run.task}</p>
+                  <Badge variant="outline" className="text-xs">
+                    {run.model === 'default' ? 'Default' : run.model === 'opus' ? 'Claude 4 Opus' : run.model === 'sonnet4' ? 'Sonnet 4' : run.model === 'sonnet' ? 'Claude 4.5 Sonnet' : run.model}
+                  </Badge>
+                </div>
+                {run.model === 'default' && (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span>{t('common.description') || 'Description'}: {t('prompt.modelDefaultDesc') || 'Use Claude default model'}</span>
+                    {detectedModelId && (
+                      <span className="opacity-80">• Resolved engine: <code>{detectedModelId}</code></span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setModelInfoRefresh(Date.now())}
+                      title={t('common.refresh') || 'Refresh'}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
               
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1">

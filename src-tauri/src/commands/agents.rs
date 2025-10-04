@@ -764,18 +764,21 @@ pub async fn execute_agent(
     };
 
     // Build arguments
-    let args = vec![
+    let mut args = vec![
         "-p".to_string(),
         task.clone(),
         "--system-prompt".to_string(),
         agent.system_prompt.clone(),
-        "--model".to_string(),
-        execution_model.clone(),
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
         "--dangerously-skip-permissions".to_string(),
     ];
+    if execution_model != "default" {
+        let selected_model = if execution_model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { execution_model.clone() };
+        args.push("--model".to_string());
+        args.push(selected_model);
+    }
 
     // Always use system binary execution (sidecar removed)
     let spawn_params = SpawnAgentParams {

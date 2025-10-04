@@ -69,7 +69,8 @@ export function AgentRunOutputViewer({
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [copyPopoverOpen, setCopyPopoverOpen] = useState(false);
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
-  
+  const [modelInfoRefresh, setModelInfoRefresh] = useState(0);
+
   // Track whether we're in the initial load phase
   const isInitialLoadRef = useRef(true);
   const hasSetupListenersRef = useRef(false);
@@ -80,6 +81,21 @@ export function AgentRunOutputViewer({
   const fullscreenMessagesEndRef = useRef<HTMLDivElement>(null);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const { getCachedOutput, setCachedOutput } = useOutputCache();
+
+  // Compute detected engine from messages for info-only display
+  const detectedModelId = useMemo(() => {
+    for (const m of messages) {
+      if (
+        m.type === 'system' &&
+        (m as any).subtype === 'init' &&
+        typeof (m as any).model === 'string' &&
+        (m as any).model.trim()
+      ) {
+        return (m as any).model as string;
+      }
+    }
+    return null;
+  }, [messages, modelInfoRefresh]);
 
   // Auto-scroll logic
   const isAtBottom = () => {
@@ -343,7 +359,13 @@ export function AgentRunOutputViewer({
     if (!run) return;
     let markdown = `# Agent Execution: ${run.agent_name}\n\n`;
     markdown += `**Task:** ${run.task}\n`;
-    markdown += `**Model:** ${run.model === 'opus' ? 'Claude 4 Opus' : 'Claude 4 Sonnet'}\n`;
+    const modelLine =
+      run.model === 'default' ? 'Default' :
+      run.model === 'opus' ? 'Claude 4 Opus' :
+      run.model === 'sonnet4' ? 'Sonnet 4' :
+      run.model === 'sonnet' ? 'Claude 4.5 Sonnet' :
+      run.model;
+    markdown += `**Model:** ${modelLine}\n`;
     markdown += `**Date:** ${formatISOTimestamp(run.created_at)}\n`;
     if (run.metrics?.duration_ms) markdown += `**Duration:** ${(run.metrics.duration_ms / 1000).toFixed(2)}s\n`;
     if (run.metrics?.total_tokens) markdown += `**Total Tokens:** ${run.metrics.total_tokens}\n`;
@@ -589,10 +611,27 @@ export function AgentRunOutputViewer({
                   <p className="text-sm text-muted-foreground mt-1 truncate">
                     {run.task}
                   </p>
+                  {run.model === 'default' && (
+                    <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2">
+                      <span>{t('common.description') || 'Description'}: {t('prompt.modelDefaultDesc') || 'Use Claude default model'}</span>
+                      {detectedModelId && (
+                        <span className="opacity-80">• Resolved engine: <code>{detectedModelId}</code></span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => setModelInfoRefresh(Date.now())}
+                        title={t('common.refresh') || 'Refresh'}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
                     <Badge variant="outline" className="text-xs">
-                      {run.model === 'opus' ? 'Claude 4 Opus' : 'Claude 4 Sonnet'}
-                    </Badge>
+                      {run.model === 'default' ? 'Default' : run.model === 'opus' ? 'Claude 4 Opus' : run.model === 'sonnet4' ? 'Sonnet 4' : run.model === 'sonnet' ? 'Claude 4.5 Sonnet' : run.model}
+                                </Badge>
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       <span>{formatISOTimestamp(run.created_at)}</span>

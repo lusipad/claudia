@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TooltipProvider, TooltipSimple, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip-modern";
 import { FilePicker } from "./FilePicker";
@@ -34,7 +35,7 @@ interface FloatingPromptInputProps {
    */
   onSend: (
     prompt: string,
-    model: "sonnet" | "opus" | "opusplan",
+    model: string,
     options?: {
       displayPrompt?: string;
       thinkingMode?: ThinkingMode;
@@ -51,7 +52,7 @@ interface FloatingPromptInputProps {
   /**
    * Default model to select
    */
-  defaultModel?: "sonnet" | "opus" | "opusplan";
+  defaultModel?: "default" | "sonnet" | "sonnet4" | "opus" | "opusplan";
   /**
    * Project path for file picker
    */
@@ -172,7 +173,7 @@ const ThinkingModeIndicator: React.FC<{ level: number; color?: string }> = ({ le
 };
 
 type Model = {
-  id: "sonnet" | "opus" | "opusplan";
+  id: "default" | "sonnet" | "sonnet4" | "opus" | "opusplan";
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -183,11 +184,27 @@ type Model = {
 // Models factory function for localization
 const createModels = (t: any): Model[] => [
   {
+    id: "default",
+    name: t("prompt.modelDefault") || "Default",
+    description: t("prompt.modelDefaultDesc") || "Use Claude default model",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    shortName: "D",
+    color: "text-primary"
+  },
+  {
     id: "sonnet",
     name: t("prompt.modelSonnet"),
     description: t("prompt.modelSonnetDesc"),
     icon: <Zap className="h-3.5 w-3.5" />,
     shortName: "S",
+    color: "text-primary"
+  },
+  {
+    id: "sonnet4",
+    name: t("prompt.modelSonnet4") || "Sonnet 4",
+    description: t("prompt.modelSonnet4Desc") || "Previous Sonnet generation",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    shortName: "S4",
     color: "text-primary"
   },
   {
@@ -224,7 +241,7 @@ const FloatingPromptInputInner = (
     onSend,
     isLoading = false,
     disabled = false,
-    defaultModel = "sonnet",
+    defaultModel = "default",
     projectPath,
     className,
     onCancel,
@@ -234,7 +251,8 @@ const FloatingPromptInputInner = (
 ) => {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState("");
-  const [selectedModel, setSelectedModel] = useState<"sonnet" | "opus" | "opusplan">(defaultModel);
+  const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
+  const [customModelInput, setCustomModelInput] = useState<string>("");
   const [selectedThinkingMode, setSelectedThinkingMode] = useState<ThinkingMode>("auto");
   const [isExpanded, setIsExpanded] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -864,7 +882,14 @@ const FloatingPromptInputInner = (
     setPrompt(newPrompt.trim());
   };
 
-  const selectedModelData = MODELS.find(m => m.id === selectedModel) || MODELS[0];
+  const selectedModelData = MODELS.find(m => m.id === selectedModel) || {
+    id: selectedModel as any,
+    name: selectedModel || (t("prompt.modelCustom") || "Custom model"),
+    description: t("prompt.modelCustomDesc") || "Enter a specific engine ID",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    shortName: "C",
+    color: "text-primary"
+  };
 
   return (
     <TooltipProvider>
@@ -950,7 +975,7 @@ const FloatingPromptInputInner = (
                         </Button>
                       }
                       content={
-                        <div className="w-[300px] p-1">
+                        <div className="w-[300px] p-1 space-y-2">
                           {MODELS.map((model) => (
                             <button
                               key={model.id}
@@ -977,6 +1002,30 @@ const FloatingPromptInputInner = (
                               </div>
                             </button>
                           ))}
+
+                          <div className="border-t border-border pt-2 mt-2 space-y-2">
+                            <div className="text-xs font-medium">{t("prompt.modelCustom") || "Custom model"}</div>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={customModelInput}
+                                onChange={(e) => setCustomModelInput(e.target.value)}
+                                placeholder={t("prompt.modelCustomPlaceholder") || "e.g., claude-sonnet-4-20250514"}
+                                className="h-8"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  const v = customModelInput.trim();
+                                  if (v) {
+                                    setSelectedModel(v);
+                                    setModelPickerOpen(false);
+                                  }
+                                }}
+                              >
+                                {t("prompt.useCustom") || "Use"}
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       }
                       open={modelPickerOpen}
@@ -1145,7 +1194,7 @@ const FloatingPromptInputInner = (
                       </Tooltip>
                   }
                 content={
-                  <div className="w-[300px] p-1">
+                  <div className="w-[300px] p-1 space-y-2">
                     {MODELS.map((model) => (
                       <button
                         key={model.id}
@@ -1172,6 +1221,30 @@ const FloatingPromptInputInner = (
                         </div>
                       </button>
                     ))}
+
+                    <div className="border-t border-border pt-2 mt-2 space-y-2">
+                      <div className="text-xs font-medium">{t("prompt.modelCustom") || "Custom model"}</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={customModelInput}
+                          onChange={(e) => setCustomModelInput(e.target.value)}
+                          placeholder={t("prompt.modelCustomPlaceholder") || "e.g., claude-sonnet-4-20250514"}
+                          className="h-8"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const v = customModelInput.trim();
+                            if (v) {
+                              setSelectedModel(v);
+                              setModelPickerOpen(false);
+                            }
+                          }}
+                        >
+                          {t("prompt.useCustom") || "Use"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 }
                 open={modelPickerOpen}

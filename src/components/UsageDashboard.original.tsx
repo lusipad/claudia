@@ -107,7 +107,8 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ }) => {
   const getModelDisplayName = (model: string): string => {
     const modelMap: Record<string, string> = {
       "claude-4-opus": "Opus 4",
-      "claude-4-sonnet": "Sonnet 4",
+      "claude-4-sonnet": "Sonnet 4", // legacy key
+      "claude-sonnet-4-20250514": "Sonnet 4",
       "claude-3.5-sonnet": "Sonnet 3.5",
       "claude-3-opus": "Opus 3",
     };

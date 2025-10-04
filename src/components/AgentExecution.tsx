@@ -12,7 +12,8 @@ import {
   ChevronDown,
   Maximize2,
   X,
-  Settings2
+  Settings2,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +100,23 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
   const { updateTabStatus } = useTabState();
   const [messages, setMessages] = useState<ClaudeStreamMessage[]>([]);
   const [rawJsonlOutput, setRawJsonlOutput] = useState<string[]>([]);
+  const [modelInfoRefresh, setModelInfoRefresh] = useState(0);
+  const [customModelInput, setCustomModelInput] = useState("");
+
+  // Detect actual model from first system init message (for info-only display)
+  const detectedModelId = React.useMemo(() => {
+    for (const m of messages) {
+      if (
+        m.type === 'system' &&
+        (m as any).subtype === 'init' &&
+        typeof (m as any).model === 'string' &&
+        (m as any).model.trim()
+      ) {
+        return (m as any).model as string;
+      }
+    }
+    return null;
+  }, [messages, modelInfoRefresh]);
   const [error, setError] = useState<string | null>(null);
   const [copyPopoverOpen, setCopyPopoverOpen] = useState(false);
   
@@ -525,7 +543,13 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
   const handleCopyAsMarkdown = async () => {
     let markdown = `# Agent Execution: ${agent.name}\n\n`;
     markdown += `**Task:** ${task}\n`;
-    markdown += `**Model:** ${model === 'opus' ? 'Claude 4 Opus' : 'Claude 4 Sonnet'}\n`;
+    const modelLine =
+      model === 'default' ? 'Default' :
+      model === 'opus' ? 'Claude 4 Opus' :
+      model === 'sonnet4' ? 'Sonnet 4' :
+      model === 'sonnet' ? 'Claude 4.5 Sonnet' :
+      model;
+    markdown += `**Model:** ${modelLine}\n`;
     markdown += `**Date:** ${new Date().toISOString()}\n\n`;
     markdown += `---\n\n`;
 
@@ -609,10 +633,37 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
               <div>
                 <h1 className="text-heading-1">{agent.name}</h1>
                 <p className="mt-1 text-body-small text-muted-foreground">
-                  {isRunning ? t("agents.running") : messages.length > 0 ? t("agents.completed") : t("status.ready")} • {model === 'opus' ? t("agents.modelClaude4Opus") : t("agents.modelClaude4Sonnet")}
+                  {isRunning ? t("agents.running") : messages.length > 0 ? t("agents.completed") : t("status.ready")} • {
+                    model === 'default'
+                      ? (t('agents.modelDefault') || 'Default')
+                      : model === 'opus'
+                        ? t("agents.modelClaude4Opus")
+                        : model === 'sonnet4'
+                          ? (t("agents.modelSonnet4") || 'Sonnet 4')
+                          : model === 'sonnet'
+                            ? t("agents.modelClaude4Sonnet")
+                            : model
+                  }
                 </p>
-              </div>
-            </div>
+                {model === 'default' && (
+                  <div className="mt-1 text-caption text-muted-foreground flex items-center gap-2">
+                    <span>{t('common.description') || 'Description'}: {t('prompt.modelDefaultDesc') || 'Use Claude default model'}</span>
+                    {detectedModelId && (
+                      <span className="opacity-80">• Resolved engine: <code>{detectedModelId}</code></span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setModelInfoRefresh(Date.now())}
+                      title={t('common.refresh') || 'Refresh'}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+             </div>
+           </div>
             <div className="flex items-center gap-2">
               {messages.length > 0 && (
                 <Button
@@ -648,7 +699,7 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
             {/* Model Selection */}
             <div className="space-y-3">
               <Label className="text-caption text-muted-foreground">{t("agents.modelSelection")}</Label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <motion.button
                   type="button"
                   onClick={() => !isRunning && setModel("sonnet")}
@@ -675,6 +726,35 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
                     <div className="text-left">
                       <div className="text-body-small font-medium">{t("agents.modelClaude4Sonnet")}</div>
                       <div className="text-caption text-muted-foreground">{t("prompt.thinkingAutoDesc")}</div>
+                    </div>
+                  </div>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={() => !isRunning && setModel("sonnet4")}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  className={cn(
+                    "flex-1 px-4 py-3 rounded-md border transition-all",
+                    model === "sonnet4" 
+                      ? "border-primary bg-primary/10 text-primary" 
+                      : "border-border hover:border-primary/50 hover:bg-accent",
+                    isRunning && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={isRunning}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                      model === "sonnet4" ? "border-primary" : "border-muted-foreground"
+                    )}>
+                      {model === "sonnet4" && (
+                        <div className="w-2 h-2 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <div className="text-body-small font-medium">{t("agents.modelSonnet4") || 'Sonnet 4'}</div>
+                      <div className="text-caption text-muted-foreground">{t("agents.modelSonnet4Desc") || ''}</div>
                     </div>
                   </div>
                 </motion.button>
@@ -708,6 +788,53 @@ export const AgentExecution: React.FC<AgentExecutionProps> = ({
                     </div>
                   </div>
                 </motion.button>
+
+                <motion.button
+                  type="button"
+                  onClick={() => !isRunning && setModel("default")}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  className={cn(
+                    "flex-1 px-4 py-3 rounded-md border transition-all",
+                    model === "default" 
+                      ? "border-primary bg-primary/10 text-primary" 
+                      : "border-border hover:border-primary/50 hover:bg-accent",
+                    isRunning && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={isRunning}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                      model === "default" ? "border-primary" : "border-muted-foreground"
+                    )}>
+                      {model === "default" && (
+                        <div className="w-2 h-2 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <div className="text-body-small font-medium">{t("agents.modelDefault") || 'Default'}</div>
+                      <div className="text-caption text-muted-foreground">{t("agents.modelDefaultDesc") || 'Use Claude default model'}</div>
+                    </div>
+                  </div>
+                </motion.button>
+              </div>
+              <div className="flex gap-2 items-center mt-2">
+                <Label className="text-caption text-muted-foreground whitespace-nowrap">{t('agents.customModelId') || 'Custom Model ID'}</Label>
+                <Input
+                  value={customModelInput}
+                  onChange={(e) => setCustomModelInput(e.target.value)}
+                  placeholder={t('prompt.modelCustomPlaceholder') || 'e.g., claude-sonnet-4-20250514'}
+                  className="h-9"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isRunning || !customModelInput.trim()}
+                  onClick={() => !isRunning && setModel(customModelInput.trim())}
+                >
+                  {t('agents.useCustom') || 'Use Custom'}
+                </Button>
               </div>
             </div>
 

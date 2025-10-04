@@ -64,7 +64,7 @@ type DisplayableEntry = {
 type QueuedPrompt = {
   id: string;
   prompt: string;
-  model: "sonnet" | "opus" | "opusplan";
+  model: string;
   displayPrompt?: string;
   thinkingMode?: ThinkingMode;
 };
@@ -499,7 +499,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
     steps: 0,
     sawToolUse: false,
   });
-  const lastModelRef = useRef<"sonnet" | "opus" | "opusplan">('sonnet');
+  const lastModelRef = useRef<string>('sonnet');
 
   // Self-feed UI controls
   const [selfFeedPopoverOpen, setSelfFeedPopoverOpen] = useState(false);
@@ -1150,7 +1150,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
 
   const handleSendPrompt = async (
     prompt: string,
-    model: "sonnet" | "opus" | "opusplan",
+    model: string,
     options?: {
       displayPrompt?: string;
       thinkingMode?: ThinkingMode;
@@ -2377,7 +2377,7 @@ export const ClaudeCodeSession: React.FC<ClaudeCodeSessionProps> = ({
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-medium text-muted-foreground">#{index + 1}</span>
                           <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                            {queuedPrompt.model === "opus" ? "Opus" : "Sonnet"}
+                            {queuedPrompt.model === "opus" ? "Opus" : queuedPrompt.model === "sonnet4" ? "Sonnet 4" : queuedPrompt.model === "sonnet" ? "Sonnet 4.5" : "Default"}
                           </span>
                         </div>
                         <p className="text-sm line-clamp-2 break-words">{queuedPrompt.displayPrompt ?? queuedPrompt.prompt}</p>
