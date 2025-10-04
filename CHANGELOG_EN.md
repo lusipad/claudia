@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0] - 2025-02-10
+
+### ✨ Features
+- Add portable Windows build (single EXE) and publish it automatically during releases
+- Improve Settings > Claude CLI path: unified inline selector, instant save, file picker, and contextual help tooltip
+
+### 🔧 Improvements
+- Update Windows path examples to copy-ready absolute paths and simplify macOS/Linux examples
+- Enhance localization fallbacks in the settings section to avoid showing raw keys
+- Adjust thinking mode options dynamically: Claude Code v2.x now exposes only “Auto” and “Ultrathink”, earlier versions keep the full list
+
 ## [0.3.2] - 2025-01-27
 
 ### 🐛 Bug Fixes
