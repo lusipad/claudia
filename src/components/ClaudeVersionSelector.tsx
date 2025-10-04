@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { api, type ClaudeInstallation } from "@/lib/api";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
 import { CheckCircle, HardDrive, Settings, Terminal, Info } from "lucide-react";
 
@@ -38,6 +39,12 @@ interface ClaudeVersionSelectorProps {
    * Simplified mode for cleaner UI
    */
   simplified?: boolean;
+  /** Allow adding a custom path from within the selector */
+  enableCustomSelect?: boolean;
+  /** Hide internal header (label/description) in simplified mode */
+  hideLabel?: boolean;
+  /** Show selected path info block (simplified mode) */
+  showPathInfo?: boolean;
 }
 
 /**
@@ -58,8 +65,15 @@ export const ClaudeVersionSelector: React.FC<ClaudeVersionSelectorProps> = ({
   onSave,
   isSaving = false,
   simplified = false,
+  enableCustomSelect = false,
+  hideLabel = false,
+  showPathInfo = true,
 }) => {
   const { t } = useTranslation();
+  const tx = React.useCallback((key: string, fallback: string) => {
+    const v = t(key as any);
+    return v === key ? fallback : v;
+  }, [t]);
   const [installations, setInstallations] = useState<ClaudeInstallation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +130,36 @@ export const ClaudeVersionSelector: React.FC<ClaudeVersionSelectorProps> = ({
   };
 
   const handleInstallationChange = (installationPath: string) => {
+    if (enableCustomSelect && installationPath === "__custom__") {
+      void browseAndAddCustom();
+      return;
+    }
     const installation = installations.find(i => i.path === installationPath);
     if (installation) {
       setSelectedInstallation(installation);
       onSelect(installation);
+    }
+  };
+
+  const browseAndAddCustom = async () => {
+    try {
+      const selected = await openDialog({ multiple: false, directory: false });
+      if (typeof selected === 'string' && selected) {
+        const custom: ClaudeInstallation = {
+          path: selected,
+          version: undefined,
+          source: 'manual',
+          installation_type: 'Custom',
+        };
+        setInstallations(prev => {
+          const exists = prev.some(i => i.path === selected);
+          return exists ? prev : [custom, ...prev];
+        });
+        setSelectedInstallation(custom);
+        onSelect(custom);
+      }
+    } catch (err) {
+      console.error('Custom path selection cancelled or failed:', err);
     }
   };
 
@@ -219,19 +259,19 @@ export const ClaudeVersionSelector: React.FC<ClaudeVersionSelectorProps> = ({
   if (simplified) {
     return (
       <div className={cn("space-y-3", className)}>
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="claude-installation" className="text-sm font-medium">{t("claudeVersion.title")}</Label>
-            <p className="text-xs text-muted-foreground">
-              Select which version of Claude to use
-            </p>
+        {!hideLabel && (
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="claude-installation" className="text-sm font-medium">{tx("claudeVersion.title", "Claude 安装")}</Label>
+              <p className="text-xs text-muted-foreground">{tx("claudeVersion.description", "选择您首选的 Claude 安装")}</p>
+            </div>
+            {selectedInstallation && (
+              <Badge variant={getInstallationTypeColor(selectedInstallation)} className="text-xs">
+                {getInstallationTypeName(selectedInstallation.installation_type)}
+              </Badge>
+            )}
           </div>
-          {selectedInstallation && (
-            <Badge variant={getInstallationTypeColor(selectedInstallation)} className="text-xs">
-              {selectedInstallation.installation_type}
-            </Badge>
-          )}
-        </div>
+        )}
         
         <Select value={selectedInstallation?.path || ""} onValueChange={handleInstallationChange}>
           <SelectTrigger id="claude-installation" className="w-full">
@@ -249,9 +289,7 @@ export const ClaudeVersionSelector: React.FC<ClaudeVersionSelectorProps> = ({
           </SelectTrigger>
           <SelectContent side="bottom" align="start" sideOffset={5}>
             {installations.length === 0 ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                No Claude installations found
-              </div>
+              <div className="p-4 text-center text-sm text-muted-foreground">{tx('claudeVersion.noInstallationsFound', '未找到安装')}</div>
             ) : (
               <>
                 {installations.map((installation) => (
@@ -272,16 +310,21 @@ export const ClaudeVersionSelector: React.FC<ClaudeVersionSelectorProps> = ({
                     </div>
                   </SelectItem>
                 ))}
+                {enableCustomSelect && (
+                  <SelectItem value="__custom__" className="cursor-pointer hover:bg-accent focus:bg-accent">
+                    + {t('claudeVersion.customPath')}
+                  </SelectItem>
+                )}
               </>
             )}
           </SelectContent>
         </Select>
         
-        {selectedInstallation && (
+        {showPathInfo && selectedInstallation && (
           <div className="flex items-start gap-2 p-2 bg-muted/50 rounded-md">
             <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
             <div className="text-xs text-muted-foreground">
-              <span className="font-medium">Path:</span> <code className="font-mono">{selectedInstallation.path}</code>
+              <span className="font-medium">{tx('claudeVersion.pathLabel', '路径')}:</span> <code className="font-mono">{selectedInstallation.path}</code>
             </div>
           </div>
         )}

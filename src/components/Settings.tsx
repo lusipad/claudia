@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip-modern";
 import { api, type ClaudeSettings, type ClaudeInstallation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Toast, ToastContainer } from "@/components/ui/toast";
@@ -67,11 +68,12 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
   );
   const [selectedInstallation, setSelectedInstallation] =
     useState<ClaudeInstallation | null>(null);
-  const [binaryPathChanged, setBinaryPathChanged] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
   } | null>(null);
+  // Claude binary section state
+  // integrated into selector
 
   // Permission rules state
   const [allowRules, setAllowRules] = useState<PermissionRule[]>([]);
@@ -94,6 +96,12 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
   } = useLanguage();
   const [languageSaving, setLanguageSaving] = useState(false);
   const { t } = useTranslation();
+  // Safe translator: fallbacks when a key is missing (shows readable UI instead of key path)
+  const tx = React.useCallback((key: string, fallback: string) => {
+    const v = t(key as any);
+    return v === key ? fallback : v;
+  }, [t]);
+  const winUserPlaceholder = tx("settings.claudeBinary.windowsUser", "用户名");
 
   // Proxy state
   const [proxySettingsChanged, setProxySettingsChanged] = useState(false);
@@ -154,6 +162,25 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
       console.error("Failed to load Claude binary path:", err);
     }
   };
+
+  /** Save immediately when a binary is selected */
+  const saveClaudeBinaryPath = async (pathToSet: string, inst?: ClaudeInstallation | null) => {
+    try {
+      if (!pathToSet) {
+        setToast({ message: t("settings.claudeBinary.selectOrEnterPath"), type: "error" });
+        return;
+      }
+      await api.setClaudeBinaryPath(pathToSet);
+      setCurrentBinaryPath(pathToSet);
+      if (inst) setSelectedInstallation(inst);
+      setToast({ message: t("settings.claudeBinary.saved"), type: "success" });
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      setToast({ message: `${t("settings.claudeBinary.saveFailed")}: ${msg}` , type: "error" });
+    }
+  };
+
+  // browse handled inside selector when enableCustomSelect is true
 
   /**
    * Loads the current Claude settings
@@ -314,12 +341,7 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
       await api.saveClaudeSettings(updatedSettings);
       setSettings(updatedSettings);
 
-      // Save Claude binary path if changed
-      if (binaryPathChanged && selectedInstallation) {
-        await api.setClaudeBinaryPath(selectedInstallation.path);
-        setCurrentBinaryPath(selectedInstallation.path);
-        setBinaryPathChanged(false);
-      }
+      // Claude binary path is saved immediately on selection; nothing to do here.
 
       // Save user hooks if changed
       if (userHooksChanged && getUserHooks.current) {
@@ -430,10 +452,7 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
   /**
    * Handle Claude installation selection
    */
-  const handleClaudeInstallationSelect = (installation: ClaudeInstallation) => {
-    setSelectedInstallation(installation);
-    setBinaryPathChanged(installation.path !== currentBinaryPath);
-  };
+  
 
   return (
     <div className={cn("h-full overflow-y-auto", className)}>
@@ -838,6 +857,53 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
                         </div>
                       )}
 
+                      {/* Claude CLI Binary Path */}
+                      <div className="space-y-3 pt-2">
+
+                        {/* Row-aligned label + selector */}
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <Label className="text-label">{tx("claudeVersion.title", "Claude 安装")}</Label>
+                            <p className="text-caption text-muted-foreground">{tx("claudeVersion.description", "选择您首选的 Claude 安装")}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ClaudeVersionSelector
+                              simplified
+                              hideLabel
+                              showPathInfo={false}
+                              enableCustomSelect
+                              selectedPath={selectedInstallation?.path || currentBinaryPath || null}
+                              onSelect={(inst) => { void saveClaudeBinaryPath(inst.path, inst); }}
+                              className="min-w-[420px]"
+                            />
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button type="button" aria-label={tx('settings.claudeBinary.help', '帮助')} className="p-1.5 rounded hover:bg-muted text-muted-foreground">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <circle cx="12" cy="12" r="9" />
+                                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4" />
+                                  <path d="M12 17h.01" />
+                                </svg>
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" align="end" className="max-w-[420px]">
+                                  <div className="text-xs space-y-1">
+                                    <div className="font-medium">{tx("settings.claudeBinary.examplesTitle", "示例")}</div>
+                                    <ul className="list-disc ml-4 space-y-0.5">
+                                      <li>{tx('settings.claudeBinary.osWindows', 'Windows')}: <code className="font-mono">{`C:\\Users\\${winUserPlaceholder}\\AppData\\Roaming\\npm\\claude.cmd`}</code></li>
+                                      <li>{tx('settings.claudeBinary.osMac', 'macOS')}: <code className="font-mono">/usr/local/bin/claude</code></li>
+                                      <li>{tx('settings.claudeBinary.osLinux', 'Linux')}: <code className="font-mono">~/.local/bin/claude</code></li>
+                                    </ul>
+                                    <div className="opacity-80">{tx("settings.claudeBinary.note", "注意：需要提供可执行文件的完整路径（而非目录）。Windows 指向 claude.exe；macOS/Linux 指向 'claude'。")}</div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Include Co-authored By */}
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5 flex-1">
@@ -902,21 +968,6 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
                             className="w-24"
                           />
                         </div>
-                      </div>
-
-                      {/* Claude Binary Path Selector */}
-                      <div className="space-y-3">
-                        <ClaudeVersionSelector
-                          selectedPath={currentBinaryPath}
-                          onSelect={handleClaudeInstallationSelect}
-                          simplified={true}
-                        />
-                        {binaryPathChanged && (
-                          <p className="text-caption text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {t("settings.general.changesWarning")}
-                          </p>
-                        )}
                       </div>
 
                       {/* Separator */}
@@ -1451,3 +1502,4 @@ export const Settings: React.FC<SettingsProps> = ({ className }) => {
     </div>
   );
 };
+

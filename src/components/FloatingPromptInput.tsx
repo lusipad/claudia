@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,20 +13,18 @@ import {
   Lightbulb,
   Cpu,
   Rocket,
-  FileText,
-  AlertCircle,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TooltipProvider, TooltipSimple, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip-modern";
 import { FilePicker } from "./FilePicker";
 import { SlashCommandPicker } from "./SlashCommandPicker";
 import { ImagePreview } from "./ImagePreview";
-import { type FileEntry, type SlashCommand } from "@/lib/api";
+import { api, type FileEntry, type SlashCommand } from "@/lib/api";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface FloatingPromptInputProps {
@@ -266,8 +264,48 @@ const FloatingPromptInputInner = (
   const [dragActive, setDragActive] = useState(false);
 
   // Create localized thinking modes and models
-  const THINKING_MODES = createThinkingModes(t);
+  const baseThinkingModes = useMemo(() => createThinkingModes(t), [t]);
+  const [claudeMajorVersion, setClaudeMajorVersion] = useState<number | null>(null);
+  const [thinkingModes, setThinkingModes] = useState<ThinkingModeConfig[]>(baseThinkingModes);
   const MODELS = createModels(t);
+
+  useEffect(() => {
+    setThinkingModes(baseThinkingModes);
+  }, [baseThinkingModes]);
+
+  useEffect(() => {
+    let active = true;
+    api.checkClaudeVersion()
+      .then(status => {
+        if (!active) return;
+        const raw = status.version ?? "";
+        const major = parseInt(raw.split(".")[0] || "", 10);
+        setClaudeMajorVersion(Number.isFinite(major) ? major : null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setClaudeMajorVersion(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const limited = claudeMajorVersion === 2
+      ? baseThinkingModes.filter(mode => mode.id === "auto" || mode.id === "ultrathink")
+      : baseThinkingModes;
+
+    setThinkingModes(limited);
+    if (limited.length > 0 && !limited.some(mode => mode.id === selectedThinkingMode)) {
+      setSelectedThinkingMode(limited[0].id);
+    }
+  }, [claudeMajorVersion, baseThinkingModes, selectedThinkingMode]);
+
+  const selectedThinkingModeData = useMemo(
+    () => thinkingModes.find(m => m.id === selectedThinkingMode),
+    [thinkingModes, selectedThinkingMode]
+  );
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -733,7 +771,7 @@ const FloatingPromptInputInner = (
       let displayPrompt = trimmedPrompt;
 
       // Append thinking phrase if not auto mode
-      const thinkingMode = THINKING_MODES.find(m => m.id === selectedThinkingMode);
+      const thinkingMode = thinkingModes.find(m => m.id === selectedThinkingMode);
       if (thinkingMode && thinkingMode.phrase) {
         const base = sanitizePromptForThinking(trimmedPrompt);
         const phraseLine = thinkingMode.phrase.trim();
@@ -1047,34 +1085,24 @@ const FloatingPromptInputInner = (
                                 onClick={() => setThinkingModePickerOpen(!thinkingModePickerOpen)}
                                 className="gap-2"
                               >
-                                <span className={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.color}>
-                                  {THINKING_MODES.find(m => m.id === selectedThinkingMode)?.icon}
+                                <span className={selectedThinkingModeData?.color ?? "text-muted-foreground"}>
+                                  {selectedThinkingModeData?.icon}
                                 </span>
                                 <ThinkingModeIndicator
-                                  level={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.level || 0}
+                                  level={selectedThinkingModeData?.level || 0}
                                 />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p className="font-medium">{THINKING_MODES.find(m => m.id === selectedThinkingMode)?.name || t("prompt.thinkingAuto")}</p>
-                              <p className="text-xs text-muted-foreground">{THINKING_MODES.find(m => m.id === selectedThinkingMode)?.description}</p>
+                              <p className="font-medium">{selectedThinkingModeData?.name || t("prompt.thinkingAuto")}</p>
+                              <p className="text-xs text-muted-foreground">{selectedThinkingModeData?.description}</p>
                             </TooltipContent>
                           </Tooltip>
                       }
                       content={
-                        <div className="w-[320px]">
-                          {/* Warning Alert */}
-                          <Alert className="m-2 mb-3 border-amber-500/50 bg-amber-500/10">
-                            <AlertCircle className="h-4 w-4 text-amber-500" />
-                            <AlertDescription className="text-xs ml-2">
-                              <div className="font-medium mb-1">{t("prompt.thinkingModeWarning")}</div>
-                              <div className="text-muted-foreground">{t("prompt.thinkingModeWarningDetail")}</div>
-                            </AlertDescription>
-                          </Alert>
-
-                          {/* Thinking Mode Options */}
-                          <div className="p-1">
-                            {THINKING_MODES.map((mode) => (
+                    <div className="w-[320px]">
+                      <div className="p-1">
+                            {thinkingModes.map((mode) => (
                               <button
                                 key={mode.id}
                                 onClick={() => {
@@ -1267,63 +1295,51 @@ const FloatingPromptInputInner = (
                               disabled={disabled}
                               className="h-9 px-2 hover:bg-accent/50 gap-1"
                             >
-                              <span className={THINKING_MODES.find(m => m.id === selectedThinkingMode)?.color}>
-                                {THINKING_MODES.find(m => m.id === selectedThinkingMode)?.icon}
+                              <span className={selectedThinkingModeData?.color ?? "text-muted-foreground"}>
+                                {selectedThinkingModeData?.icon}
                               </span>
                               <span className="text-[10px] font-semibold opacity-70">
-                                {THINKING_MODES.find(m => m.id === selectedThinkingMode)?.shortName}
+                                {selectedThinkingModeData?.shortName}
                               </span>
                               <ChevronUp className="h-3 w-3 ml-0.5 opacity-50" />
                             </Button>
                           </motion.div>
                         </TooltipTrigger>
                         <TooltipContent side="top">
-                          <p className="text-xs font-medium">{t("prompt.thinking")} {THINKING_MODES.find(m => m.id === selectedThinkingMode)?.name || t("prompt.thinkingAuto")}</p>
-                          <p className="text-xs text-muted-foreground">{THINKING_MODES.find(m => m.id === selectedThinkingMode)?.description}</p>
+                          <p className="text-xs font-medium">{t("prompt.thinking")} {selectedThinkingModeData?.name || t("prompt.thinkingAuto")}</p>
+                          <p className="text-xs text-muted-foreground">{selectedThinkingModeData?.description}</p>
                         </TooltipContent>
                       </Tooltip>
                   }
                 content={
-                  <div className="w-[320px]">
-                    {/* Warning Alert */}
-                    <Alert className="m-2 mb-3 border-amber-500/50 bg-amber-500/10">
-                      <AlertCircle className="h-4 w-4 text-amber-500" />
-                      <AlertDescription className="text-xs ml-2">
-                        <div className="font-medium mb-1">{t("prompt.thinkingModeWarning")}</div>
-                        <div className="text-muted-foreground">{t("prompt.thinkingModeWarningDetail")}</div>
-                      </AlertDescription>
-                    </Alert>
-
-                    {/* Thinking Mode Options */}
-                    <div className="p-1">
-                      {THINKING_MODES.map((mode) => (
-                        <button
-                          key={mode.id}
-                          onClick={() => {
-                            setSelectedThinkingMode(mode.id);
-                            setThinkingModePickerOpen(false);
-                          }}
-                          className={cn(
-                            "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
-                            "hover:bg-accent",
-                            selectedThinkingMode === mode.id && "bg-accent"
-                          )}
-                        >
-                          <span className={cn("mt-0.5", mode.color)}>
-                            {mode.icon}
-                          </span>
-                          <div className="flex-1 space-y-1">
-                            <div className="font-medium text-sm">
-                              {mode.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {mode.description}
-                            </div>
+                  <div className="w-[320px] p-1">
+                    {thinkingModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => {
+                          setSelectedThinkingMode(mode.id);
+                          setThinkingModePickerOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left",
+                          "hover:bg-accent",
+                          selectedThinkingMode === mode.id && "bg-accent"
+                        )}
+                      >
+                        <span className={cn("mt-0.5", mode.color)}>
+                          {mode.icon}
+                        </span>
+                        <div className="flex-1 space-y-1">
+                          <div className="font-medium text-sm">
+                            {mode.name}
                           </div>
-                          <ThinkingModeIndicator level={mode.level} />
-                        </button>
-                      ))}
-                    </div>
+                          <div className="text-xs text-muted-foreground">
+                            {mode.description}
+                          </div>
+                        </div>
+                        <ThinkingModeIndicator level={mode.level} />
+                      </button>
+                    ))}
                   </div>
                 }
                 open={thinkingModePickerOpen}
