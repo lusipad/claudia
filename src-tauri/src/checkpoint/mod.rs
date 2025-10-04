@@ -127,10 +127,11 @@ pub enum CheckpointStrategy {
 }
 
 /// Restore mode for checkpoint restoration (aligns with official Claude Code Rewind)
-#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RestoreMode {
     /// Restore both code and conversation history
+    #[default]
     Both,
     /// Restore conversation only, keep current code state
     /// Use case: Want to rephrase question but keep code changes
@@ -140,28 +141,17 @@ pub enum RestoreMode {
     CodeOnly,
 }
 
-impl Default for RestoreMode {
-    fn default() -> Self {
-        RestoreMode::Both
-    }
-}
-
 /// Type of checkpoint (aligns with official Claude Code Rewind)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckpointType {
     /// Automatic checkpoint created before each user prompt
     Auto,
     /// User manually created checkpoint
+    #[default]
     Manual,
     /// Automatic backup before restore operation
     PreRestore,
-}
-
-impl Default for CheckpointType {
-    fn default() -> Self {
-        CheckpointType::Manual
-    }
 }
 
 /// Tracks the state of files for checkpointing

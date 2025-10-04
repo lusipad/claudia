@@ -122,7 +122,10 @@ fn calculate_cost(model: &str, usage: &UsageData) -> f64 {
                 OPUS_4_CACHE_WRITE_PRICE,
                 OPUS_4_CACHE_READ_PRICE,
             )
-        } else if model.contains("sonnet-4-5") || model.contains("claude-sonnet-4-5") || model.contains("sonnet-4.5") {
+        } else if model.contains("sonnet-4-5")
+            || model.contains("claude-sonnet-4-5")
+            || model.contains("sonnet-4.5")
+        {
             (
                 SONNET_45_INPUT_PRICE,
                 SONNET_45_OUTPUT_PRICE,
@@ -274,16 +277,15 @@ fn get_all_usage_entries(
                     .for_each(|entry| {
                         // If we have a date range, quickly filter files by last modified timestamp to avoid scanning old files
                         let within_range = if let Some((start, end)) = date_range {
-                            let modified_opt = entry
-                                .metadata()
-                                .ok()
-                                .and_then(|m| m.modified().ok());
+                            let modified_opt =
+                                entry.metadata().ok().and_then(|m| m.modified().ok());
                             if let Some(modified) = modified_opt {
                                 // Convert SystemTime to chrono Date
                                 let modified_dt: chrono::DateTime<chrono::Local> = modified.into();
                                 let d = modified_dt.naive_local().date();
                                 // Add a small +/-1 day margin of error
-                                d >= (start - chrono::Duration::days(1)) && d <= (end + chrono::Duration::days(1))
+                                d >= (start - chrono::Duration::days(1))
+                                    && d <= (end + chrono::Duration::days(1))
                             } else {
                                 true // if we can't read metadata, include to be safe
                             }
@@ -292,7 +294,8 @@ fn get_all_usage_entries(
                         };
 
                         if within_range {
-                            files_to_process.push((entry.path().to_path_buf(), project_name.clone()));
+                            files_to_process
+                                .push((entry.path().to_path_buf(), project_name.clone()));
                         }
                     });
             }
@@ -683,8 +686,12 @@ pub fn get_session_stats(
         .join(".claude");
 
     // Build optional date range for prefiltering
-    let since_date = since.as_ref().and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
-    let until_date = until.as_ref().and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
+    let since_date = since
+        .as_ref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
+    let until_date = until
+        .as_ref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y%m%d").ok());
 
     let all_entries = match (since_date, until_date) {
         (Some(s), Some(u)) => get_all_usage_entries(&claude_path, Some((s, u))),

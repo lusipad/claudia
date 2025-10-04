@@ -506,12 +506,9 @@ impl CheckpointManager {
                     .await
             }
             RestoreMode::ConversationOnly => {
-                self.restore_conversation_only(&checkpoint, &messages)
-                    .await
+                self.restore_conversation_only(&checkpoint, &messages).await
             }
-            RestoreMode::CodeOnly => {
-                self.restore_code_only(&checkpoint, file_snapshots).await
-            }
+            RestoreMode::CodeOnly => self.restore_code_only(&checkpoint, file_snapshots).await,
         }
     }
 
@@ -684,9 +681,7 @@ impl CheckpointManager {
         }
 
         warnings.push("对话历史未改变，仅恢复了代码状态".to_string());
-        log::info!(
-            "Code restored successfully, conversation history preserved"
-        );
+        log::info!("Code restored successfully, conversation history preserved");
 
         Ok(CheckpointResult {
             checkpoint: checkpoint.clone(),

@@ -775,7 +775,11 @@ pub async fn execute_agent(
         "--dangerously-skip-permissions".to_string(),
     ];
     if execution_model != "default" {
-        let selected_model = if execution_model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { execution_model.clone() };
+        let selected_model = if execution_model == "sonnet4" {
+            "claude-sonnet-4-20250514".to_string()
+        } else {
+            execution_model.clone()
+        };
         args.push("--model".to_string());
         args.push(selected_model);
     }

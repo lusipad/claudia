@@ -999,7 +999,11 @@ pub async fn execute_claude_code(
         "--dangerously-skip-permissions".to_string(),
     ];
     if model != "default" {
-        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        let selected_model = if model == "sonnet4" {
+            "claude-sonnet-4-20250514".to_string()
+        } else {
+            model.clone()
+        };
         args.push("--model".to_string());
         args.push(selected_model);
     }
@@ -1034,7 +1038,11 @@ pub async fn continue_claude_code(
         "--dangerously-skip-permissions".to_string(),
     ];
     if model != "default" {
-        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        let selected_model = if model == "sonnet4" {
+            "claude-sonnet-4-20250514".to_string()
+        } else {
+            model.clone()
+        };
         args.push("--model".to_string());
         args.push(selected_model);
     }
@@ -1072,7 +1080,11 @@ pub async fn resume_claude_code(
         "--dangerously-skip-permissions".to_string(),
     ];
     if model != "default" {
-        let selected_model = if model == "sonnet4" { "claude-sonnet-4-20250514".to_string() } else { model.clone() };
+        let selected_model = if model == "sonnet4" {
+            "claude-sonnet-4-20250514".to_string()
+        } else {
+            model.clone()
+        };
         args.push("--model".to_string());
         args.push(selected_model);
     }
@@ -2090,7 +2102,10 @@ pub async fn get_checkpoint_storage_stats(
     project_id: String,
     project_path: String,
 ) -> Result<serde_json::Value, String> {
-    log::info!("Getting checkpoint storage stats for session: {}", session_id);
+    log::info!(
+        "Getting checkpoint storage stats for session: {}",
+        session_id
+    );
 
     let manager = app
         .get_or_create_manager(session_id, project_id, PathBuf::from(project_path))

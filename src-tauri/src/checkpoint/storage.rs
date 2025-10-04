@@ -462,7 +462,10 @@ impl CheckpointStorage {
         // Build a map for quick parent lookup
         let mut parent_map = std::collections::HashMap::new();
         for checkpoint in checkpoints {
-            parent_map.insert(checkpoint.id.clone(), checkpoint.parent_checkpoint_id.clone());
+            parent_map.insert(
+                checkpoint.id.clone(),
+                checkpoint.parent_checkpoint_id.clone(),
+            );
         }
 
         // Walk up the ancestor chain

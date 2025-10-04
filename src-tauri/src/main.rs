@@ -18,10 +18,10 @@ use commands::agents::{
     stream_session_output, update_agent, AgentDb,
 };
 use commands::claude::{
-    cancel_claude_execution, check_auto_checkpoint, check_claude_version, cleanup_old_checkpoints,
-    cleanup_expired_checkpoints, clear_checkpoint_manager, continue_claude_code,
-    create_checkpoint, create_project, execute_claude_code, find_claude_md_files,
-    fork_from_checkpoint, get_checkpoint_diff, get_checkpoint_settings,
+    cancel_claude_execution, check_auto_checkpoint, check_claude_version,
+    cleanup_expired_checkpoints, cleanup_old_checkpoints, clear_checkpoint_manager,
+    continue_claude_code, create_checkpoint, create_project, execute_claude_code,
+    find_claude_md_files, fork_from_checkpoint, get_checkpoint_diff, get_checkpoint_settings,
     get_checkpoint_state_stats, get_checkpoint_storage_stats, get_claude_session_output,
     get_claude_settings, get_home_directory, get_hooks_config, get_project_sessions,
     get_recently_modified_files, get_session_timeline, get_system_prompt, list_checkpoints,
