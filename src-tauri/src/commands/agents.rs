@@ -800,6 +800,7 @@ pub async fn execute_agent(
 }
 
 /// Creates a system binary command for agent execution
+#[cfg(windows)]
 fn is_batch_wrapper_on_windows(program: &str) -> bool {
     #[cfg(windows)]
     {

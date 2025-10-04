@@ -301,6 +301,7 @@ fn create_command_with_env(program: &str) -> Command {
 }
 
 /// Creates a system binary command with the given arguments
+#[cfg(windows)]
 fn is_batch_wrapper_on_windows(program: &str) -> bool {
     #[cfg(windows)]
     {
