@@ -19,6 +19,7 @@
 
 ### 修复
 - 仅在 Windows 下编译 `is_batch_wrapper_on_windows` 帮助函数，解决非 Windows 目标的 Clippy `dead_code` 报错。
+- 调整 Windows 构建流程，直接复用 `tauri build` 生成的便携可执行文件，修复 standalone 版本访问 `localhost` 被拒绝的问题。
 - 重新运行 `cargo fmt`，确保格式化结果与 CI 保持一致。
 
 ## [0.3.2] - 2025-01-27

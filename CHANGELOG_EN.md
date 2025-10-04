@@ -19,6 +19,7 @@
 
 ### Bug Fixes
 - Guard `is_batch_wrapper_on_windows` helpers with `cfg(windows)` to satisfy `cargo clippy -D warnings` on non-Windows targets.
+- Adjust the Windows workflow to reuse the `tauri build` executable so the portable build loads embedded assets instead of failing with `localhost` connection errors.
 - Re-run `cargo fmt` after the helper changes so formatted files stay clean in CI.
 
 ## [0.3.2] - 2025-01-27
